@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desc">固定 X 底部导航栏，并记录浏览过的推文（足迹）。适配 X 12.37.2。</string>
+</resources>

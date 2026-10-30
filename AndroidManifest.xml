@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.catsuki.xtrail"
+    android:versionCode="6"
+    android:versionName="0.5">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+    <application
+        android:label="XTrail"
+        android:icon="@mipmap/ic_launcher"
+        android:description="@string/desc"
+        android:allowBackup="false">
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="XTrail"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
