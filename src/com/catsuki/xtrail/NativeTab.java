@@ -138,6 +138,7 @@ final class NativeTab {
         return null;
     }
 
+    private static final java.util.List<Object> ALL_ACTIONS = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static volatile Object actions;   // com.x.repositories.post.actions.i0, captured when X builds or uses it
 
     /** X's repository that queues likes: remember the instance so the module's list can like through it */
@@ -146,7 +147,7 @@ final class NativeTab {
         for (Constructor<?> c : k.getDeclaredConstructors()) {
             mod.hook(c).intercept(chain -> {
                 Object r = chain.proceed();
-                actions = chain.getThisObject();
+                ALL_ACTIONS.add(chain.getThisObject());
                 return r;
             });
         }
@@ -171,7 +172,8 @@ final class NativeTab {
     /** like or unlike a stored post through X's own action queue; false when that is not possible yet */
     static boolean like(long id, boolean on) {
         try {
-            Object repo = actions;
+            // one repository per signed-in account: prefer the one X itself used last, else the first built (the primary account)
+            Object repo = actions != null ? actions : (ALL_ACTIONS.isEmpty() ? null : ALL_ACTIONS.get(0));
             Object item;
             synchronized (LIVE) { item = LIVE.get(id); }
             Object post = findByClass(item, "com.x.models.o1", 0);

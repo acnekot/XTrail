@@ -70,7 +70,7 @@ final class NativeList {
     // ------------------------------------------------------------------ model
 
     private static final class Post {
-        long id, ts;
+        long id, pid, ts;
         String name = "", handle = "", avatar, text = "";
         int reply, rt, fav, views;
         boolean snapLiked, hasVideo;
@@ -106,6 +106,11 @@ final class NativeList {
 
     private static void fill(Post p, JSONObject c, boolean actions) {
         if (c == null) return;
+        if (actions) {
+            JSONObject io = c.optJSONObject("id");
+            String is = io != null ? io.optString("value", "") : c.optString("id", "");
+            try { p.pid = Long.parseLong(is); } catch (Throwable ignored) { }
+        }
         JSONObject au = c.optJSONObject("author");
         if (au != null) {
             p.name = au.optString("name", "");
@@ -225,6 +230,7 @@ final class NativeList {
             Activity a = XTrailModule.topActivity();
             if (a == null) return;
             remember(a, id, on);
+            for (Post q : POSTS.values()) if (q.pid == id && q.id != id) remember(a, q.id, on);
             if (adapter != null) adapter.notifyDataSetChanged();
         });
     }
@@ -512,7 +518,7 @@ final class NativeList {
     private static void open(Activity a, Post p) {
         try {
             NativeTab.noteOpened(p.id);
-            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://x.com/" + (p.handle.isEmpty() ? "i" : p.handle) + "/status/" + p.id + "/photo/1")); // plain /status/<id> links bounce to home in this build; the photo route opens the detail page
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://x.com/" + (p.handle.isEmpty() ? "i" : p.handle) + "/status/" + (p.pid != 0 ? p.pid : p.id) + "/photo/1")); // plain /status/<id> links bounce to home in this build; the photo route opens the detail page
             i.setPackage(a.getPackageName());
             a.startActivity(i);
         } catch (Throwable t) {
