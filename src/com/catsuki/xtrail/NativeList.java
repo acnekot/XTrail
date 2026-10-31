@@ -521,17 +521,23 @@ final class NativeList {
         remember(a, p.id, now);
         // rebind just this bar: a full notifyDataSetChanged swaps the recycled views and would cut the animation
         bindBar(a, t, c, p);
-        if (now) pop(c.bar.icons[2]);
+        if (now) pop(a, c.bar.icons[2]);
         MAIN.postDelayed(() -> { if (adapter != null) adapter.notifyDataSetChanged(); }, 700);
     }
 
     /** X's like animation: the heart springs up from small, with a ring and a few sparks flying out */
-    private static void pop(final ImageView icon) {
+    private static void pop(Activity a, final ImageView icon) {
+        // the heart overshoots and the sparks fly out of its small row: let every ancestor draw outside its bounds
+        for (android.view.ViewParent v = icon.getParent(); v instanceof android.view.ViewGroup; v = v.getParent()) ((android.view.ViewGroup) v).setClipChildren(false);
+        // measure before scaling: the window location of a scaled view is that of its scaled box
+        final View host = a.getWindow().getDecorView();
+        int[] at = new int[2], base = new int[2];
+        icon.getLocationInWindow(at);
+        host.getLocationInWindow(base);
+        final float cx = at[0] - base[0] + icon.getWidth() / 2f, cy = at[1] - base[1] + icon.getHeight() / 2f, r0 = icon.getWidth() / 2f;
         icon.setScaleX(0.3f);
         icon.setScaleY(0.3f);
         icon.animate().scaleX(1f).scaleY(1f).setDuration(420).setInterpolator(new android.view.animation.OvershootInterpolator(3.2f)).start();
-        final View host = (View) icon.getParent();
-        final float cx = icon.getLeft() + icon.getWidth() / 2f, cy = icon.getTop() + icon.getHeight() / 2f, r0 = icon.getWidth() / 2f;
         final Burst d = new Burst(cx, cy, r0);
         d.setBounds(0, 0, host.getWidth(), host.getHeight());
         host.getOverlay().add(d);
@@ -558,8 +564,8 @@ final class NativeList {
         @Override public void draw(android.graphics.Canvas c) {
             paint.setColor(PINK);
             paint.setStyle(android.graphics.Paint.Style.STROKE);
-            paint.setStrokeWidth(r0 * 0.25f * (1f - f));
-            paint.setAlpha((int) (200 * (1f - f)));
+            paint.setStrokeWidth(r0 * 0.4f * (1f - f));
+            paint.setAlpha((int) (230 * (1f - f)));
             c.drawCircle(cx, cy, r0 * (0.6f + 1.4f * f), paint);
             paint.setStyle(android.graphics.Paint.Style.FILL);
             paint.setAlpha((int) (255 * (1f - f)));
