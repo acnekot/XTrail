@@ -30,10 +30,17 @@ import java.util.ArrayList;
 final class Sticky {
     /** top of the list below the History tab strip, in dp (fallback until measured) */
     private static final int LIST_TOP_DP = 155;
-    private static final int DIVIDER = Color.parseColor("#2F3336");
+    /** the gear sits GEAR_ABOVE_DP above the list top (bottom of the tab strip), GEAR_RIGHT_DP in from the right edge */
+    private static final int GEAR_SIZE_DP = 56, GEAR_ABOVE_DP = 79, GEAR_RIGHT_DP = 39;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     private static FrameLayout layer;
+    /** transparent hit area over the History top bar gear: on the footprint tab it opens XTrail settings instead */
+    private static View gearHit;
+    private static boolean layerDark;
+    private static long[][] lastVis;
+    private static Object[] lastPin;
+    private static int lastEnd = -1;
     private static Row pinned;
     private static View cover;
     private static final ArrayList<Row> rows = new ArrayList<>();
@@ -55,7 +62,7 @@ final class Sticky {
             p.setStrokeWidth(2f * d);
             p.setStrokeCap(Paint.Cap.ROUND);
             p.setStrokeJoin(Paint.Join.ROUND);
-            p.setColor(Color.parseColor("#71767B"));
+            p.setColor(Theme.of(c).sub);
         }
 
         @Override
@@ -77,9 +84,10 @@ final class Sticky {
 
         Row(Activity a, boolean withText) {
             super(a);
+            final Theme t = Theme.of(a);
             StateListDrawable bg = new StateListDrawable();
-            bg.addState(new int[]{android.R.attr.state_pressed}, new ColorDrawable(Color.parseColor("#14FFFFFF")));
-            bg.addState(new int[]{}, new ColorDrawable(withText ? Color.BLACK : Color.TRANSPARENT));
+            bg.addState(new int[]{android.R.attr.state_pressed}, new ColorDrawable(t.press));
+            bg.addState(new int[]{}, new ColorDrawable(withText ? t.bg : Color.TRANSPARENT));
             setBackground(bg);
             setClickable(true);
             if (withText) {
@@ -89,10 +97,10 @@ final class Sticky {
                 title = new TextView(a);
                 title.setTextSize(20);
                 title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-                title.setTextColor(Color.parseColor("#E7E9EA"));
+                title.setTextColor(t.fg);
                 sub = new TextView(a);
                 sub.setTextSize(14);
-                sub.setTextColor(Color.parseColor("#71767B"));
+                sub.setTextColor(t.sub);
                 col.addView(title);
                 col.addView(sub);
                 addView(col, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -102,7 +110,7 @@ final class Sticky {
             cp.rightMargin = dp(a, 16);
             addView(chev, cp);
             View line = new View(a);
-            line.setBackgroundColor(DIVIDER);
+            line.setBackgroundColor(t.line);
             addView(line, new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1, Gravity.BOTTOM));
             setOnClickListener(v -> {
                 if (day == Long.MIN_VALUE) return;
@@ -125,26 +133,45 @@ final class Sticky {
         }
     }
 
+    /** screen y of the list top edge, or -1 until measured */
+    static int listTop() {
+        return lastTop < 0 ? -1 : currentTop();
+    }
+
     private static int dp(Context a, int v) {
         return Math.round(v * a.getResources().getDisplayMetrics().density);
     }
 
     private static void ensure(Activity a) {
-        if (layer != null && layer.getContext() == a && layer.getParent() != null) return;
-        hideNow();
+        if (layer != null && layer.getContext() == a && layer.getParent() != null && layerDark == Theme.of(a).dark) {
+            layer.setVisibility(View.VISIBLE);
+            if (gearHit != null) gearHit.setVisibility(View.VISIBLE);
+            return;
+        }
+        detach();
         layer = new FrameLayout(a);
+        layerDark = Theme.of(a).dark;
         rows.clear();
         pinned = new Row(a, true);
         pinned.setVisibility(View.GONE);
         cover = new View(a);
-        cover.setBackgroundColor(Color.BLACK);
+        cover.setBackgroundColor(Theme.of(a).bg);
         cover.setVisibility(View.GONE);
         layer.addView(cover, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP));
         layer.addView(pinned, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP);
         lp.topMargin = lastTop >= 0 ? lastTop : dp(a, LIST_TOP_DP);
-        ((ViewGroup) a.getWindow().getDecorView()).addView(layer, lp);
+        ViewGroup decor = (ViewGroup) a.getWindow().getDecorView();
+        decor.addView(layer, lp);
+        gearHit = new View(a);
+        gearHit.setClickable(true);
+        final Activity act = a;
+        gearHit.setOnClickListener(v -> SettingsDialog.show(act));
+        FrameLayout.LayoutParams gp = new FrameLayout.LayoutParams(dp(a, GEAR_SIZE_DP), dp(a, GEAR_SIZE_DP), Gravity.TOP | Gravity.END);
+        gp.topMargin = -dp(a, GEAR_SIZE_DP);
+        decor.addView(gearHit, gp);
+        place(a);
     }
 
     // ------------------------------------------------------------------ update
@@ -153,12 +180,16 @@ final class Sticky {
      * vis: visible time headers {dayKey, offsetPx, heightPx, collapsed(0/1)}, offset relative to the list top;
      * pin: {dayKey, title, sub, collapsed} for the current group when its own header is scrolled away, else null.
      */
-    static void update(final long[][] vis, final Object[] pin, final int endBottom) {
-        if (Looper.myLooper() == Looper.getMainLooper()) apply(vis, pin, endBottom);
-        else MAIN.post(() -> apply(vis, pin, endBottom));
+    static void update(final long[][] vis, final Object[] pin, final int endBottom, final int vp) {
+        if (Looper.myLooper() == Looper.getMainLooper()) apply(vis, pin, endBottom, vp);
+        else MAIN.post(() -> apply(vis, pin, endBottom, vp));
     }
 
-    private static void apply(long[][] vis, Object[] pin, int endBottom) {
+    private static void apply(long[][] vis, Object[] pin, int endBottom, int vp) {
+        curVp = vp;
+        lastVis = vis;
+        lastPin = pin;
+        lastEnd = endBottom;
         Activity a = XTrailModule.topActivity();
         if (a == null || !NativeTab.ourVisible()) { hideNow(); return; }
         ensure(a);
@@ -191,10 +222,9 @@ final class Sticky {
             pinned.setVisibility(View.VISIBLE);
         }
         long now = android.os.SystemClock.uptimeMillis();
-        if (lastTop < 0 || now - lastMeasure > 50) {
-            lastMeasure = now;
-            measure(a);
-        }
+        lastMeasure = now;
+        measure(a);
+        place(a);
         MAIN.removeCallbacks(REMEASURE);
         MAIN.postDelayed(REMEASURE, 120);
         tick();
@@ -212,8 +242,24 @@ final class Sticky {
      * PixelCopy of the right-most pixel column: the selected tab's white underline reaches the screen edge and its
      * bottom edge is the top of the list (which moves when X's top bar collapses). Runs at most every 50 ms while the list moves.
      */
+    private static boolean measuring, remeasure;
+    /**
+     * The measured top is a frame or two old, but the list's viewport height (reported by X's layout, same frame) grows
+     * by exactly what the top bar gives up: the list's bottom edge stays put. So learn that bottom edge from the
+     * measurement and derive the top from the viewport height.
+     */
+    private static int curVp, bottomEdge = -1;
+
+    private static int currentTop() {
+        if (lastTop < 0) return -1;
+        return bottomEdge > 0 && curVp > 0 ? bottomEdge - curVp : lastTop;
+    }
+
     private static void measure(final Activity a) {
+        if (measuring) { remeasure = true; return; }
         try {
+            measuring = true;
+            final int vpAtReq = curVp;
             View decor = a.getWindow().getDecorView();
             final int w = decor.getWidth(), h = decor.getHeight() / 3;
             if (w <= 0 || h <= 0) return;
@@ -226,15 +272,20 @@ final class Sticky {
                             int yy = y;
                             while (yy + 1 < h && bright(bm.getPixel(1, yy + 1))) yy++;
                             lastTop = yy + 2;
+                            // only trust a sample taken while the viewport was not changing
+                            if (vpAtReq == curVp && curVp > 0) bottomEdge = lastTop + curVp;
                             place(a);
                             return;
                         }
                     }
                 } finally {
                     bm.recycle();
+                    measuring = false;
+                    if (remeasure) { remeasure = false; measure(a); }
                 }
             }, MAIN);
         } catch (Throwable t) {
+            measuring = false;
             android.util.Log.w("XTrailSticky", "measure failed: " + t);
         }
     }
@@ -269,9 +320,17 @@ final class Sticky {
 
     private static void place(Activity a) {
         if (layer == null || layer.getParent() == null) return;
-        int top = lastTop >= 0 ? lastTop : dp(a, LIST_TOP_DP);
+        int top = lastTop >= 0 ? currentTop() : dp(a, LIST_TOP_DP);
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) layer.getLayoutParams();
         if (lp.topMargin != top) { lp.topMargin = top; layer.setLayoutParams(lp); }
+        if (gearHit != null) {
+            // while the top bar is collapsed the gear is off screen: park the hit area there too
+            int cy = top - dp(a, GEAR_ABOVE_DP);
+            FrameLayout.LayoutParams gp = (FrameLayout.LayoutParams) gearHit.getLayoutParams();
+            int want = cy < dp(a, 40) ? -dp(a, GEAR_SIZE_DP) : cy - dp(a, GEAR_SIZE_DP) / 2;
+            int right = dp(a, GEAR_RIGHT_DP) - dp(a, GEAR_SIZE_DP) / 2;
+            if (gp.topMargin != want || gp.rightMargin != right) { gp.topMargin = want; gp.rightMargin = right; gearHit.setLayoutParams(gp); }
+        }
     }
 
     // ------------------------------------------------------------------ lifecycle
@@ -280,18 +339,36 @@ final class Sticky {
         MAIN.post(() -> {
             if (layer == null) return;
             for (Row r : rows) r.setVisibility(View.GONE);
+            if (gearHit != null) gearHit.setVisibility(View.GONE);
             pinned.setVisibility(View.GONE);
             cover.setVisibility(View.GONE);
         });
     }
 
+    /**
+     * Hiding only flips visibility: the layer stays attached to the decor. Adding/removing a decor child every time the tab
+     * comes and goes raced with other code walking the decor (e.g. the screenshot editor), which crashed with
+     * "DecorView contains null child". The layer is only really detached when another Activity takes over.
+     */
     private static void hideNow() {
+        if (layer != null) layer.setVisibility(View.GONE);
+        if (gearHit != null) gearHit.setVisibility(View.GONE);
+    }
+
+    private static void detach() {
         if (layer != null) {
-            ViewGroup p = (ViewGroup) layer.getParent();
-            if (p != null) p.removeView(layer);
+            try {
+                ViewGroup p = (ViewGroup) layer.getParent();
+                if (p != null) p.removeView(layer);
+                if (gearHit != null && gearHit.getParent() != null) ((ViewGroup) gearHit.getParent()).removeView(gearHit);
+            } catch (Throwable t) {
+                android.util.Log.w("XTrailSticky", "detach failed: " + t);
+            }
             layer = null;
+            gearHit = null;
         }
         lastTop = -1;
+        bottomEdge = -1;
     }
 
     /** while shown, drop the overlay as soon as the History tab is no longer on screen */
@@ -300,9 +377,15 @@ final class Sticky {
         ticking = true;
         MAIN.postDelayed(() -> {
             ticking = false;
-            if (layer == null) return;
+            if (layer == null || layer.getVisibility() != View.VISIBLE) return;
             if (!NativeTab.ourVisible()) { hideNow(); return; }
-            measure(XTrailModule.topActivity());
+            final Activity top = XTrailModule.topActivity();
+            if (top == null) return;
+            Theme.refresh(top, () -> {
+                // X's own theme was switched: rebuild the overlay in the new colours
+                if (layer != null && layerDark != Theme.of(top).dark && lastVis != null) apply(lastVis, lastPin, lastEnd, curVp);
+            });
+            measure(top);
             tick();
         }, 300);
     }

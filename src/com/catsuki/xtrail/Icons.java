@@ -83,6 +83,17 @@ final class Icons extends Drawable {
                 p.moveTo(19f, 5f); p.lineTo(11f, 13f);
                 c.drawPath(p, paint);
                 break;
+            case "post":
+                p.moveTo(14f, 4.5f); p.lineTo(6f, 4.5f); p.cubicTo(5f, 4.5f, 4.5f, 5f, 4.5f, 6f); p.lineTo(4.5f, 18f);
+                p.cubicTo(4.5f, 19f, 5f, 19.5f, 6f, 19.5f); p.lineTo(18f, 19.5f); p.cubicTo(19f, 19.5f, 19.5f, 19f, 19.5f, 18f); p.lineTo(19.5f, 10f);
+                p.moveTo(9f, 15f); p.lineTo(9.6f, 12f); p.lineTo(17.5f, 4.2f); p.lineTo(19.8f, 6.5f); p.lineTo(12f, 14.4f); p.close();
+                c.drawPath(p, paint);
+                break;
+            case "reply":
+                p.moveTo(10f, 6f); p.lineTo(4.5f, 11.5f); p.lineTo(10f, 17f);
+                p.moveTo(5f, 11.5f); p.lineTo(14f, 11.5f); p.cubicTo(18f, 11.5f, 19.5f, 13.5f, 19.5f, 18.5f);
+                c.drawPath(p, paint);
+                break;
             case "all":
                 c.drawCircle(12f, 12f, 8.5f, paint);
                 p.moveTo(12f, 7f); p.lineTo(12f, 12f); p.lineTo(15.5f, 14f);

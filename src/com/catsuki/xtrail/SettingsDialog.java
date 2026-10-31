@@ -37,7 +37,7 @@ final class SettingsDialog {
 
     private SettingsDialog(Activity a) {
         this.a = a;
-        dark = (a.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        dark = Theme.of(a).dark;
         bg = dark ? Color.BLACK : Color.WHITE;
         fg = Color.parseColor(dark ? "#E7E9EA" : "#0F1419");
         sub = Color.parseColor("#71767B");
@@ -49,7 +49,7 @@ final class SettingsDialog {
 
     static void show(Activity a) {
         if (a == null || a.isFinishing()) return;
-        new SettingsDialog(a).open();
+        Theme.refresh(a, () -> { if (!a.isFinishing()) new SettingsDialog(a).open(); });
     }
 
     private void back() {
@@ -293,6 +293,14 @@ final class SettingsDialog {
                 })
                 .show());
         b.addView(clear);
+        LinearLayout exp = row("导出足迹", "保存为「下载」文件夹里的文本文件。", fg);
+        exp.setOnClickListener(v -> Transfer.export(a));
+        b.addView(exp);
+        LinearLayout imp = row("导入足迹", "选择之前导出的文件，与现有记录合并。", fg);
+        imp.setOnClickListener(v -> Transfer.pickImport(a));
+        b.addView(imp);
+        header(b, "关于");
+        link(b, "检查更新", "当前版本 " + Updater.VERSION, () -> Updater.check(a));
         showPage(col, b);
     }
 

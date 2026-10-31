@@ -59,6 +59,9 @@ final class NativeTab {
     /** post id -> source category (home/search/...), and the ids the user actually opened */
     private static final Map<Long, String> CATS = new java.util.HashMap<>();
     private static final java.util.Set<Long> OPENED = new java.util.HashSet<>();
+    /** keys of posts that are replies (a post's JSON carries "repliedPostId":<id> only then) */
+    private static final java.util.Set<Long> REPLIES = new java.util.HashSet<>();
+    private static final java.util.regex.Pattern REPLY_JSON = java.util.regex.Pattern.compile("\"repliedPostId\":\\d");
     private static volatile String filter = "all";
     private static volatile String timeRange = "all";   // all | today | 7d | 30d
     private static volatile String query = "";
@@ -139,6 +142,7 @@ final class NativeTab {
                             TEXTS.put(id, f.length == 6 ? f[5] : js.toLowerCase());
                             CATS.put(id, old ? "home" : f[1]);
                             if (!old && f[2].equals("1")) OPENED.add(id);
+                            if (REPLY_JSON.matcher(js).find()) REPLIES.add(id);
                         }
                     } catch (Throwable t) {
                         bad++;
@@ -189,10 +193,105 @@ final class NativeTab {
         });
     }
 
+    // ---------------------------------------------------------------- export / import / browse info
+
+    /** every post as one text row (id, cat, opened, time, text, json), or null when there is nothing */
+    static String exportText() {
+        initStore();
+        if (json == null) return null;
+        ArrayList<Object[]> snap = new ArrayList<>();
+        synchronized (LIVE) {
+            for (Map.Entry<Long, Object> e : LIVE.entrySet()) {
+                snap.add(new Object[]{e.getKey(), e.getValue(), CATS.get(e.getKey()), OPENED.contains(e.getKey()),
+                        TIMES.get(e.getKey()), TEXTS.get(e.getKey())});
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Object[] e : snap) {
+            try {
+                String j = (String) jsonEncode.invoke(json, e[1], itemSerializer);
+                sb.append(e[0]).append(TAB).append(e[2] == null ? "other" : e[2]).append(TAB).append(((Boolean) e[3]) ? "1" : "0")
+                        .append(TAB).append(e[4] == null ? 0L : e[4]).append(TAB)
+                        .append(e[5] == null ? "" : ((String) e[5]).replace(TAB, ' ').replace(NL, ' '))
+                        .append(TAB).append(j.replace(NL, ' ')).append(NL);
+            } catch (Throwable ignored) {
+            }
+        }
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    /** merges exported rows into the history (the newer sighting of a post wins); returns how many were added or updated, -1 on failure */
+    static int importText(String text) {
+        initStore();
+        if (json == null) return -1;
+        int n = 0;
+        for (String line : text.split(String.valueOf(NL))) {
+            String[] f = line.split(String.valueOf(TAB), 6);
+            if (f.length != 6) continue;
+            try {
+                long id = Long.parseLong(f[0]);
+                if (id == 0L || id == Long.MAX_VALUE) continue;
+                long time = Long.parseLong(f[3]);
+                Object item = jsonDecode.invoke(json, f[5], itemSerializer);
+                synchronized (LIVE) {
+                    Long cur = TIMES.get(id);
+                    if (cur != null && cur >= time && LIVE.containsKey(id)) continue;
+                    LIVE.put(id, item);
+                    TIMES.put(id, time);
+                    TEXTS.put(id, f[4]);
+                    CATS.put(id, f[1]);
+                    if ("1".equals(f[2])) OPENED.add(id);
+                    if (REPLY_JSON.matcher(f[5]).find()) REPLIES.add(id);
+                }
+                n++;
+            } catch (Throwable ignored) {
+            }
+        }
+        synchronized (LIVE) {
+            // the list order is the insertion order: put everything back in time order
+            ArrayList<Long> ids = new ArrayList<>(LIVE.keySet());
+            Collections.sort(ids, (x, y) -> Long.compare(TIMES.containsKey(x) ? TIMES.get(x) : 0L, TIMES.containsKey(y) ? TIMES.get(y) : 0L));
+            java.util.HashMap<Long, Object> copy = new java.util.HashMap<>(LIVE);
+            LIVE.clear();
+            for (Long id : ids) LIVE.put(id, copy.get(id));
+            trimLocked();
+        }
+        save();
+        queuePublish();
+        return n;
+    }
+
+    /** list rows on screen: {key, top, bottom}, relative to the list's top edge */
+    private static volatile ArrayList<Object[]> ROWS = new ArrayList<>();
+    private static final java.util.regex.Pattern ID_IN_KEY = java.util.regex.Pattern.compile("-?\\d{5,}");
+    private static final java.text.SimpleDateFormat FULL = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault());
+
+    /** {exact time, how long ago, source, opened} of the post at y (px below the list top), or null */
+    static String[] browseInfoAt(int y) {
+        for (Object[] r : ROWS) {
+            if (y < (Integer) r[1] || y >= (Integer) r[2]) continue;
+            java.util.regex.Matcher m = ID_IN_KEY.matcher((String) r[0]);
+            while (m.find()) {
+                long id;
+                try { id = Long.parseLong(m.group()); } catch (NumberFormatException e) { continue; }
+                Long t;
+                String cat;
+                boolean opened;
+                synchronized (LIVE) { t = TIMES.get(id); cat = CATS.get(id); opened = OPENED.contains(id); }
+                if (t == null) continue;
+                long min = Math.max(0, (System.currentTimeMillis() - t) / 60000L);
+                String ago = min < 1 ? "刚刚" : min < 60 ? min + " 分钟前" : min < 1440 ? min / 60 + " 小时前" : min / 1440 + " 天前";
+                return new String[]{FULL.format(new java.util.Date(t)), ago, cat == null ? "" : FilterMenu.label(cat), opened ? "1" : ""};
+            }
+            return null;
+        }
+        return null;
+    }
+
     // ---------------------------------------------------------------- capture
 
     /** postId = id of the post inside the item (the item's own key is an entry id, not the post id). */
-    static void onItem(String cat, Object timelineItem, long postId, String handle, String text) {
+    static void onItem(String cat, Object timelineItem, long postId, String handle, String text, boolean reply) {
         initStore();
         if (timelineItem == null || cItemL1 == null || !cItemL1.isInstance(timelineItem)) return;
         long id;
@@ -217,6 +316,7 @@ final class NativeTab {
             TIMES.put(id, System.currentTimeMillis());
             TEXTS.put(id, ((handle == null ? "" : handle) + " " + (text == null ? "" : text)).toLowerCase());
             CATS.put(id, had && oldCat != null ? oldCat : cat);
+            if (reply) REPLIES.add(id); else REPLIES.remove(id);
             if (postId != 0L) {
                 POST_KEY.put(postId, id);
                 if (PENDING.remove(postId)) OPENED.add(id);
@@ -236,6 +336,7 @@ final class NativeTab {
             TIMES.remove(old);
             TEXTS.remove(old);
             OPENED.remove(old);
+            REPLIES.remove(old);
         }
         POST_KEY.values().removeIf(k -> !LIVE.containsKey(k));
     }
@@ -247,7 +348,7 @@ final class NativeTab {
 
     static void clearAll() {
         synchronized (LIVE) {
-            LIVE.clear(); CATS.clear(); TIMES.clear(); TEXTS.clear(); OPENED.clear(); POST_KEY.clear(); PENDING.clear();
+            LIVE.clear(); CATS.clear(); TIMES.clear(); TEXTS.clear(); OPENED.clear(); REPLIES.clear(); POST_KEY.clear(); PENDING.clear();
         }
         queuePublish();
     }
@@ -307,6 +408,9 @@ final class NativeTab {
         LinkedHashMap<String, Integer> m = new LinkedHashMap<>();
         synchronized (LIVE) {
             m.put("all", LIVE.size());
+            int rep = 0;
+            for (Long id : LIVE.keySet()) if (REPLIES.contains(id)) rep++;
+            if (rep > 0) { m.put("post", LIVE.size() - rep); m.put("reply", rep); }
             for (Long id : LIVE.keySet()) {
                 String c = CATS.get(id);
                 if (c == null) c = "other";
@@ -525,8 +629,11 @@ final class NativeTab {
             long since = sinceMillis(timeRange);
             for (int i = ids.size() - 1; i >= 0; i--) {
                 Long id = ids.get(i);
-                if (!(f.equals("all")
-                        || (f.equals("opened") ? OPENED.contains(id) : f.equals(CATS.get(id))))) continue;
+                boolean ok = f.equals("all") || (f.equals("opened") ? OPENED.contains(id)
+                        : f.equals("reply") ? REPLIES.contains(id)
+                        : f.equals("post") ? !REPLIES.contains(id)
+                        : f.equals(CATS.get(id)));
+                if (!ok) continue;
                 Long t = TIMES.get(id);
                 if (t != null && t < since) continue;
                 String tx = TEXTS.get(id);
@@ -685,7 +792,7 @@ final class NativeTab {
         Class<?> state = cl.loadClass("androidx.compose.foundation.lazy.i0");
         Class<?> info = cl.loadClass("androidx.compose.foundation.lazy.u");
         Class<?> vi = cl.loadClass("androidx.compose.foundation.lazy.v");
-        final Field fFirst = info.getField("a"), fOff = info.getField("b"), fItems = info.getField("l"), fTotal = info.getField("o");
+        final Field fFirst = info.getField("a"), fOff = info.getField("b"), fItems = info.getField("l"), fTotal = info.getField("o"), fVp = info.getField("n");
         final Field fIdx = vi.getField("a"), fKey = vi.getField("l"), fP = vi.getField("p"), fQ = vi.getField("q");
         Method g = null;
         for (Method m : state.getDeclaredMethods()) {
@@ -715,6 +822,7 @@ final class NativeTab {
                 Object[] cur = HEADERS.get(0);
                 for (Object[] h : HEADERS) { if ((Integer) h[0] <= idx) cur = h; else break; }
                 ArrayList<long[]> vis = new ArrayList<>();
+                ArrayList<Object[]> rows = new ArrayList<>();
                 int endBottom = -1;
                 for (Object it : (List<?>) fItems.get(u)) {
                     Object key = fKey.get(it);
@@ -726,15 +834,16 @@ final class NativeTab {
                         KEYDAY.put(key, cached);
                     }
                     if (cached == Long.MAX_VALUE) { endBottom = fP.getInt(it) + fQ.getInt(it); continue; }
-                    if (cached == Long.MIN_VALUE) continue;
+                    if (cached == Long.MIN_VALUE) { rows.add(new Object[]{String.valueOf(key), fP.getInt(it), fP.getInt(it) + fQ.getInt(it)}); continue; }
                     long day = cached;
                     boolean closed;
                     synchronized (COLLAPSED) { closed = COLLAPSED.contains(day); }
                     vis.add(new long[]{day, fP.getInt(it), fQ.getInt(it), closed ? 1 : 0});
                 }
+                ROWS = rows;
                 boolean covered = (Integer) cur[0] == idx && off <= 0;
                 Object[] pinned = covered ? null : new Object[]{cur[4], cur[1], cur[2], cur[5]};
-                Sticky.update(vis.toArray(new long[0][]), pinned, endBottom);
+                Sticky.update(vis.toArray(new long[0][]), pinned, endBottom, fVp.getInt(u));
             } catch (Throwable t) {
                 // never break X
             }

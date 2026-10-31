@@ -96,6 +96,29 @@ public class XTrailModule extends XposedModule {
             }
             return r;
         });
+        // long press on a post of the footprint list shows its view time; the touch is never consumed
+        hook(Activity.class.getDeclaredMethod("dispatchTouchEvent", android.view.MotionEvent.class)).intercept(chain -> {
+            try {
+                Object o = chain.getThisObject();
+                if (o instanceof Activity && chain.getArg(0) instanceof android.view.MotionEvent) {
+                    if (LongPress.onTouch((Activity) o, (android.view.MotionEvent) chain.getArg(0))) return true;
+                }
+            } catch (Throwable ignored) {
+            }
+            return chain.proceed();
+        });
+        // result of the file picker used by the history import
+        hook(Activity.class.getDeclaredMethod("onActivityResult", int.class, int.class, android.content.Intent.class)).intercept(chain -> {
+            Object r = chain.proceed();
+            try {
+                Object o = chain.getThisObject();
+                if (o instanceof Activity && (Integer) chain.getArg(0) == Transfer.REQ_IMPORT && (Integer) chain.getArg(1) == Activity.RESULT_OK) {
+                    Transfer.onResult((Activity) o, (android.content.Intent) chain.getArg(2));
+                }
+            } catch (Throwable ignored) {
+            }
+            return r;
+        });
         // X already running: the launcher entry arrives as a new intent
         hook(Activity.class.getDeclaredMethod("onNewIntent", android.content.Intent.class)).intercept(chain -> {
             Object r = chain.proceed();
@@ -204,7 +227,7 @@ public class XTrailModule extends XposedModule {
         return null;
     }
 
-    /** returns {id, handle, text} or null */
+    /** returns {id, handle, text, "1" when the post is a reply} or null */
     private String[] describe(Object post) {
         if (post == null) return null;
         try {
@@ -215,7 +238,16 @@ public class XTrailModule extends XposedModule {
             Matcher m = URL.matcher(url);
             if (!m.find()) return null;
             if (text != null && text.length() > 400) text = text.substring(0, 400);
-            return new String[]{m.group(2), m.group(1), text == null ? "" : text};
+            boolean reply = false;
+            try {
+                for (Method mm : postIface.getMethods()) {
+                    if (mm.getParameterTypes().length != 0) continue;
+                    Object r = mm.invoke(post);
+                    if (r != null && r.getClass().getSimpleName().contains("ReplyContext")) { reply = true; break; }
+                }
+            } catch (Throwable ignored) {
+            }
+            return new String[]{m.group(2), m.group(1), text == null ? "" : text, reply ? "1" : ""};
         } catch (Throwable t) {
             return null;
         }
@@ -229,7 +261,7 @@ public class XTrailModule extends XposedModule {
             Object post = findPost(timelineItem);
             String[] d = describe(post);
             if (d == null) return;
-            NativeTab.onItem(cat, timelineItem, Long.parseLong(d[0]), d[1], d[2]);
+            NativeTab.onItem(cat, timelineItem, Long.parseLong(d[0]), d[1], d[2], !d[3].isEmpty());
             HistoryStore.add(c, cat, Long.parseLong(d[0]), d[1], d[2]);
         } catch (Throwable t) {
             // never break X

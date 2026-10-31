@@ -17,14 +17,16 @@ public final class SettingsActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         try {
-            Intent i = new Intent(Intent.ACTION_MAIN)
-                    .setComponent(new ComponentName("com.twitter.android", "com.x.android.main.MainActivity"))
-                    .addCategory(Intent.CATEGORY_LAUNCHER)
-                    .putExtra(EXTRA, true)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            Intent i = getPackageManager().getLaunchIntentForPackage("com.twitter.android");
+            if (i == null) {
+                i = new Intent(Intent.ACTION_MAIN)
+                        .setComponent(new ComponentName("com.twitter.android", "com.x.android.main.MainActivity"))
+                        .addCategory(Intent.CATEGORY_LAUNCHER);
+            }
+            i.putExtra(EXTRA, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             startActivity(i);
         } catch (Throwable t) {
-            Toast.makeText(this, "无法打开 X，请确认已安装", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "无法打开 X：" + t.getMessage(), Toast.LENGTH_LONG).show();
         }
         finish();
     }

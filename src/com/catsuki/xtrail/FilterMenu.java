@@ -24,7 +24,7 @@ import java.util.Map;
 
 /** Bottom sheet opened by tapping the selected "足迹" tab (like the folder sheet of the Bookmarks tab). */
 final class FilterMenu {
-    private static String label(String key) {
+    static String label(String key) {
         switch (key) {
             case "all": return "全部";
             case "home": return "首页";
@@ -35,6 +35,8 @@ final class FilterMenu {
             case "comm": return "社群";
             case "detail": return "详情";
             case "opened": return "已打开";
+            case "post": return "推文";
+            case "reply": return "回复";
             default: return "其他";
         }
     }
@@ -43,22 +45,27 @@ final class FilterMenu {
         return Math.round(v * a.getResources().getDisplayMetrics().density);
     }
 
-    private static void styleChips(TextView[] views, String[][] ranges) {
+    private static void styleChips(Theme t, TextView[] views, String[][] ranges) {
         String cur = NativeTab.timeRange();
         for (int i = 0; i < views.length; i++) {
             boolean on = ranges[i][0].equals(cur);
             GradientDrawable g = new GradientDrawable();
             g.setCornerRadius(1000);
-            g.setColor(on ? Color.parseColor("#EFF3F4") : Color.TRANSPARENT);
-            g.setStroke(2, on ? Color.parseColor("#EFF3F4") : Color.parseColor("#536471"));
+            g.setColor(on ? t.chipOn : Color.TRANSPARENT);
+            g.setStroke(2, on ? t.chipOn : t.chipOff);
             views[i].setBackground(g);
-            views[i].setTextColor(on ? Color.BLACK : Color.parseColor("#EFF3F4"));
+            views[i].setTextColor(on ? t.chipOnText : t.fg);
             views[i].setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         }
     }
 
-    static void show(Activity a) {
+    static void show(final Activity a) {
         if (a == null || a.isFinishing()) return;
+        Theme.refresh(a, () -> { if (!a.isFinishing()) build(a); });
+    }
+
+    private static void build(Activity a) {
+        final Theme t = Theme.of(a);
         final Dialog d = new Dialog(a);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
@@ -66,15 +73,15 @@ final class FilterMenu {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setPadding(0, dp(a, 12), 0, dp(a, 24));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(Color.parseColor("#000000"));
-        bg.setStroke(dp(a, 1), Color.parseColor("#2F3336"));
+        bg.setColor(t.bg);
+        bg.setStroke(dp(a, 1), t.line);
         float r = dp(a, 16);
         bg.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
         col.setBackground(bg);
 
         View grip = new View(a);
         GradientDrawable g = new GradientDrawable();
-        g.setColor(Color.parseColor("#3E4144"));
+        g.setColor(t.grip);
         g.setCornerRadius(dp(a, 3));
         grip.setBackground(g);
         LinearLayout.LayoutParams gp = new LinearLayout.LayoutParams(dp(a, 36), dp(a, 4));
@@ -88,22 +95,22 @@ final class FilterMenu {
         search.setSingleLine(true);
         search.setText(NativeTab.query());
         search.setTextSize(15);
-        search.setTextColor(Color.parseColor("#E7E9EA"));
-        search.setHintTextColor(Color.parseColor("#71767B"));
+        search.setTextColor(t.fg);
+        search.setHintTextColor(t.sub);
         search.setPadding(dp(a, 16), dp(a, 10), dp(a, 16), dp(a, 10));
-        Drawable mag = Icons.of("search", Color.parseColor("#71767B"));
+        Drawable mag = Icons.of("search", t.sub);
         mag.setBounds(0, 0, dp(a, 20), dp(a, 20));
         search.setCompoundDrawables(mag, null, null, null);
         search.setCompoundDrawablePadding(dp(a, 10));
         search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         GradientDrawable sbg = new GradientDrawable();
-        sbg.setColor(Color.parseColor("#202327"));
+        sbg.setColor(t.field);
         sbg.setCornerRadius(dp(a, 20));
         search.setBackground(sbg);
         final TextView empty = new TextView(a);
         empty.setText("没有符合条件的足迹");
         empty.setTextSize(13);
-        empty.setTextColor(Color.parseColor("#71767B"));
+        empty.setTextColor(t.sub);
         empty.setPadding(dp(a, 20), 0, dp(a, 20), dp(a, 8));
         search.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int st, int c, int af) { }
@@ -134,14 +141,14 @@ final class FilterMenu {
             c.setPadding(dp(a, 6), dp(a, 8), dp(a, 6), dp(a, 8));
             c.setOnClickListener(v -> {
                 NativeTab.setTimeRange(key);
-                styleChips(chipViews, ranges);
+                styleChips(t, chipViews, ranges);
             });
             chipViews[i] = c;
             LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             cp.setMargins(dp(a, 3), 0, dp(a, 3), 0);
             chips.addView(c, cp);
         }
-        styleChips(chipViews, ranges);
+        styleChips(t, chipViews, ranges);
         col.addView(chips, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         empty.setVisibility(NativeTab.shownCount() == 0 ? View.VISIBLE : View.GONE);
@@ -157,7 +164,7 @@ final class FilterMenu {
             row.setPadding(dp(a, 20), 0, dp(a, 20), 0);
 
             View icon = new View(a);
-            icon.setBackground(Icons.of(key, key.equals(cur) ? Color.parseColor("#1D9BF0") : Color.parseColor("#E7E9EA")));
+            icon.setBackground(Icons.of(key, key.equals(cur) ? Color.parseColor("#1D9BF0") : t.fg));
             LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(dp(a, 24), dp(a, 24));
             ip.rightMargin = dp(a, 16);
             row.addView(icon, ip);
@@ -165,7 +172,7 @@ final class FilterMenu {
             TextView name = new TextView(a);
             name.setText(label(key));
             name.setTextSize(17);
-            name.setTextColor(Color.parseColor("#E7E9EA"));
+            name.setTextColor(t.fg);
             name.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             name.setTypeface(Typeface.create("sans-serif-medium", key.equals(cur) ? Typeface.BOLD : Typeface.NORMAL));
             row.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -173,7 +180,7 @@ final class FilterMenu {
             TextView count = new TextView(a);
             count.setText(key.equals(cur) ? "✓  " + e.getValue() : String.valueOf(e.getValue()));
             count.setTextSize(15);
-            count.setTextColor(key.equals(cur) ? Color.parseColor("#1D9BF0") : Color.parseColor("#71767B"));
+            count.setTextColor(key.equals(cur) ? Color.parseColor("#1D9BF0") : t.sub);
             row.addView(count);
 
             row.setOnClickListener(v -> {
@@ -182,21 +189,6 @@ final class FilterMenu {
             });
             col.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         }
-
-        TextView set = new TextView(a);
-        set.setText("设置");
-        set.setTextSize(16);
-        set.setTextColor(Color.parseColor("#71767B"));
-        Drawable gear = Icons.of("gear", Color.parseColor("#71767B"));
-        gear.setBounds(0, 0, dp(a, 22), dp(a, 22));
-        set.setCompoundDrawables(gear, null, null, null);
-        set.setCompoundDrawablePadding(dp(a, 16));
-        set.setPadding(dp(a, 20), dp(a, 16), dp(a, 20), dp(a, 8));
-        set.setOnClickListener(v -> {
-            d.dismiss();
-            SettingsDialog.show(a);
-        });
-        col.addView(set);
 
         ScrollView sv = new ScrollView(a);
         sv.addView(col);
