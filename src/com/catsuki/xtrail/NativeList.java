@@ -78,6 +78,7 @@ final class NativeList {
         final ArrayList<String> imgs = new ArrayList<>();
         float ratio = 1.5f;
         Post quote;
+        final ArrayList<String> links = new ArrayList<>();   // shortened link texts as shown in the body
     }
 
     private static Post parse(long id) {
@@ -133,7 +134,7 @@ final class NativeList {
             if (urls != null) for (int i = 0; i < urls.length(); i++) {
                 JSONObject u = urls.optJSONObject(i);
                 String t = u.optString("url", ""), d = u.optString("displayUrl", "");
-                if (!t.isEmpty() && !d.isEmpty()) text = text.replace(t, d);
+                if (!t.isEmpty() && !d.isEmpty()) { text = text.replace(t, d); p.links.add(d); }
             }
         }
         p.text = text.trim();
@@ -172,6 +173,22 @@ final class NativeList {
                 default: break;
             }
         }
+    }
+
+    private static final java.util.regex.Pattern TAGS = java.util.regex.Pattern.compile("[@#][\\p{L}\\p{N}_]+");
+
+    /** the post text with links, @mentions and #hashtags in the accent colour, like X draws them */
+    private static CharSequence rich(String text, ArrayList<String> links) {
+        SpannableStringBuilder s = new SpannableStringBuilder(text);
+        int blue = Color.parseColor("#1D9BF0");
+        java.util.regex.Matcher m = TAGS.matcher(text);
+        while (m.find()) s.setSpan(new ForegroundColorSpan(blue), m.start(), m.end(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        for (String l : links) {
+            for (int at = text.indexOf(l); at >= 0; at = text.indexOf(l, at + l.length())) {
+                s.setSpan(new ForegroundColorSpan(blue), at, at + l.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            }
+        }
+        return s;
     }
 
     private static long parseTime(String iso) {
@@ -486,7 +503,7 @@ final class NativeList {
             b.setTextColor(t.fg);
             b.setMaxLines(6);
             b.setEllipsize(TextUtils.TruncateAt.END);
-            b.setText(q.text);
+            b.setText(rich(q.text, q.links));
             box.addView(b);
         }
         if (!q.imgs.isEmpty()) {
@@ -627,7 +644,7 @@ final class NativeList {
                 c.reply.setText(rs);
             }
             c.body.setTextColor(t.fg);
-            c.body.setText(p.text);
+            c.body.setText(rich(p.text, p.links));
             c.body.setVisibility(p.text.isEmpty() ? View.GONE : View.VISIBLE);
             load(c.avatar, p.avatar);
             c.avatar.setBackgroundColor(t.field);
