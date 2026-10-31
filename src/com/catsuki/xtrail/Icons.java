@@ -94,6 +94,42 @@ final class Icons extends Drawable {
                 p.moveTo(5f, 11.5f); p.lineTo(14f, 11.5f); p.cubicTo(18f, 11.5f, 19.5f, 13.5f, 19.5f, 18.5f);
                 c.drawPath(p, paint);
                 break;
+            case "p-reply":
+                p.moveTo(12f, 4.5f); p.cubicTo(7.3f, 4.5f, 3.8f, 7.6f, 3.8f, 11.6f); p.cubicTo(3.8f, 15.4f, 6.8f, 18.4f, 10.5f, 18.6f);
+                p.lineTo(10.5f, 21f); p.lineTo(14f, 18.4f); p.cubicTo(18f, 17.6f, 20.2f, 14.9f, 20.2f, 11.6f); p.cubicTo(20.2f, 7.6f, 16.7f, 4.5f, 12f, 4.5f);
+                c.drawPath(p, paint);
+                break;
+            case "p-rt":
+                p.moveTo(4f, 11f); p.lineTo(4f, 9f); p.cubicTo(4f, 7.4f, 5.2f, 6.2f, 6.8f, 6.2f); p.lineTo(18f, 6.2f);
+                p.moveTo(15f, 3.2f); p.lineTo(18.2f, 6.2f); p.lineTo(15f, 9.2f);
+                p.moveTo(20f, 13f); p.lineTo(20f, 15f); p.cubicTo(20f, 16.6f, 18.8f, 17.8f, 17.2f, 17.8f); p.lineTo(6f, 17.8f);
+                p.moveTo(9f, 14.8f); p.lineTo(5.8f, 17.8f); p.lineTo(9f, 20.8f);
+                c.drawPath(p, paint);
+                break;
+            case "p-heart":
+            case "p-heartfill":
+                p.moveTo(12f, 20.5f); p.cubicTo(5f, 15.5f, 3f, 12f, 3f, 8.8f); p.cubicTo(3f, 6.2f, 5f, 4.2f, 7.4f, 4.2f);
+                p.cubicTo(9.2f, 4.2f, 10.8f, 5.2f, 12f, 6.9f); p.cubicTo(13.2f, 5.2f, 14.8f, 4.2f, 16.6f, 4.2f);
+                p.cubicTo(19f, 4.2f, 21f, 6.2f, 21f, 8.8f); p.cubicTo(21f, 12f, 19f, 15.5f, 12f, 20.5f); p.close();
+                if (key.equals("p-heartfill")) paint.setStyle(Paint.Style.FILL_AND_STROKE);
+                c.drawPath(p, paint);
+                break;
+            case "p-views":
+                c.drawLine(5f, 20f, 5f, 12f, paint);
+                c.drawLine(10f, 20f, 10f, 5f, paint);
+                c.drawLine(15f, 20f, 15f, 9f, paint);
+                c.drawLine(20f, 20f, 20f, 14f, paint);
+                break;
+            case "p-bookmark":
+                p.moveTo(6.5f, 4f); p.lineTo(17.5f, 4f); p.lineTo(17.5f, 20.5f); p.lineTo(12f, 16.2f); p.lineTo(6.5f, 20.5f); p.close();
+                c.drawPath(p, paint);
+                break;
+            case "p-share":
+                p.moveTo(12f, 15f); p.lineTo(12f, 3.5f); p.moveTo(8f, 7f); p.lineTo(12f, 3f); p.lineTo(16f, 7f);
+                p.moveTo(5f, 11f); p.lineTo(5f, 19f); p.cubicTo(5f, 20f, 5.6f, 20.5f, 6.5f, 20.5f); p.lineTo(17.5f, 20.5f);
+                p.cubicTo(18.4f, 20.5f, 19f, 20f, 19f, 19f); p.lineTo(19f, 11f);
+                c.drawPath(p, paint);
+                break;
             case "all":
                 c.drawCircle(12f, 12f, 8.5f, paint);
                 p.moveTo(12f, 7f); p.lineTo(12f, 12f); p.lineTo(15.5f, 14f);

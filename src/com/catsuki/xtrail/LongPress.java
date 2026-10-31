@@ -39,7 +39,7 @@ final class LongPress {
                 swallow = false;
                 cancel();
                 downTime = e.getDownTime();
-                if (!NativeTab.ourVisible()) return false;
+                if (!NativeTab.ourVisible() || NativeList.shown()) return false;
                 downX = e.getRawX();
                 downY = e.getRawY();
                 final float y = downY;

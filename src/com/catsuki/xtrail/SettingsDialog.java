@@ -276,6 +276,7 @@ final class SettingsDialog {
         LinearLayout col = page("XTrail 设置");
         LinearLayout b = body();
         header(b, "界面");
+        toggle(b, "自绘足迹列表（实验）", "用模块自己的列表显示足迹，点赞立即变色。图片和引用推文为简化样式。", Settings.nativeList(), Settings::setNativeList);
         toggle(b, "固定底部导航栏", "滑动时底部导航栏不再隐藏。需重启 X 后生效。", Settings.pinBar(), Settings::setPin);
         header(b, "足迹");
         toggle(b, "记录足迹", "浏览过的推文会记录在「历史记录」的足迹页。", Settings.recordAll(), Settings::setRecordAll);

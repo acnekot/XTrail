@@ -86,6 +86,111 @@ final class NativeTab {
         hookTitle();
         hookTabChevron();
         hookTabClick();
+        try { hookLikes(); } catch (Throwable t) { mod.log(android.util.Log.WARN, TAG, "like hook failed: " + t); }
+    }
+
+    // ---------------------------------------------------------------- module list support
+
+    private static final Map<Long, String> JSON_CACHE = new java.util.HashMap<>();
+
+    /** the stored item as JSON (cached), or null */
+    static String jsonOf(long id) {
+        Object item;
+        synchronized (LIVE) {
+            item = LIVE.get(id);
+            if (item == null) return null;
+            String c = JSON_CACHE.get(id);
+            if (c != null) return c;
+        }
+        try {
+            initStore();
+            String j = (String) jsonEncode.invoke(json, item, itemSerializer);
+            synchronized (LIVE) {
+                if (JSON_CACHE.size() > 1500) JSON_CACHE.clear();
+                JSON_CACHE.put(id, j);
+            }
+            return j;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    static long timeOf(long id) {
+        synchronized (LIVE) { Long t = TIMES.get(id); return t == null ? 0L : t; }
+    }
+
+    private static Object findByClass(Object o, String cls, int depth) {
+        if (o == null || depth > 5) return null;
+        String n = o.getClass().getName();
+        if (n.equals(cls)) return o;
+        if (n.startsWith("java.") || n.startsWith("kotlin.") || o instanceof Number || o instanceof CharSequence || o instanceof Enum) return null;
+        try {
+            for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+                for (Field f : k.getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                    f.setAccessible(true);
+                    Object r = findByClass(f.get(o), cls, depth + 1);
+                    if (r != null) return r;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    private static volatile Object actions;   // com.x.repositories.post.actions.i0, captured when X builds or uses it
+
+    /** X's repository that queues likes: remember the instance so the module's list can like through it */
+    private static void hookLikes() throws Throwable {
+        Class<?> k = cl.loadClass("com.x.repositories.post.actions.i0");
+        for (Constructor<?> c : k.getDeclaredConstructors()) {
+            mod.hook(c).intercept(chain -> {
+                Object r = chain.proceed();
+                actions = chain.getThisObject();
+                return r;
+            });
+        }
+        for (Method m : k.getDeclaredMethods()) {
+            if (!m.getName().equals("d") || m.getParameterCount() == 0) continue;
+            mod.hook(m).intercept(chain -> {
+                actions = chain.getThisObject();
+                try {
+                    String s = String.valueOf(chain.getArg(0));
+                    java.util.regex.Matcher id = java.util.regex.Pattern.compile("targetId=([0-9]+)").matcher(s);
+                    if (id.find()) {
+                        if (s.contains("post_action_type=Favorite")) NativeList.likedElsewhere(Long.parseLong(id.group(1)), true);
+                        else if (s.contains("post_action_type=Unfavorite")) NativeList.likedElsewhere(Long.parseLong(id.group(1)), false);
+                    }
+                } catch (Throwable ignored) {
+                }
+                return chain.proceed();
+            });
+        }
+    }
+
+    /** like or unlike a stored post through X's own action queue; false when that is not possible yet */
+    static boolean like(long id, boolean on) {
+        try {
+            Object repo = actions;
+            Object item;
+            synchronized (LIVE) { item = LIVE.get(id); }
+            Object post = findByClass(item, "com.x.models.o1", 0);
+            if (repo == null || post == null) return false;
+            Class<?> u5 = cl.loadClass("com.x.models.u5");
+            Object type = u5.getField(on ? "Favorite" : "Unfavorite").get(null);
+            for (Method m : repo.getClass().getDeclaredMethods()) {
+                Class<?>[] p = m.getParameterTypes();
+                if (m.getName().equals("c") && p.length == 7 && p[0] == repo.getClass() && p[2] == u5) {
+                    m.setAccessible(true);
+                    Object extras = cl.loadClass("kotlin.collections.builders.MapBuilder").getConstructor().newInstance();
+                    m.invoke(null, repo, post, type, on ? "LIKE" : "UNLIKE", extras, null, 16);
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            mod.log(android.util.Log.WARN, TAG, "like failed: " + t);
+        }
+        return false;
     }
 
     // ---------------------------------------------------------------- persistence
@@ -398,6 +503,7 @@ final class NativeTab {
                 synchronized (OURS) {
                     for (Object flow : OURS.values()) setState(flow, buildState());
                 }
+                NativeList.dataChanged();
             } catch (Throwable t) {
                 mod.log(android.util.Log.WARN, TAG, "filter failed: " + t);
             }
@@ -444,6 +550,7 @@ final class NativeTab {
             synchronized (OURS) {
                 for (Object flow : OURS.values()) setState(flow, buildState());
             }
+            NativeList.dataChanged();
             save();
         } catch (Throwable t) {
             mod.log(android.util.Log.WARN, TAG, "publish failed: " + t);
@@ -712,6 +819,9 @@ final class NativeTab {
         if ("off".equals(Settings.group())) {
             HEADERS = new ArrayList<>();
             ArrayList<Object> plain = new ArrayList<Object>(filtered());
+            ArrayList<Object[]> pe = new ArrayList<>();
+            for (Long id : filteredIds()) pe.add(new Object[]{"P", id});
+            ENTRIES = pe;
             if (!plain.isEmpty()) plain.add(endLabel());
             lastCount = plain.size();
             return plain;
@@ -720,6 +830,7 @@ final class NativeTab {
         ArrayList<Long> ids = filteredIds();
         ArrayList<Object> out = new ArrayList<>();
         ArrayList<Object[]> heads = new ArrayList<>();
+        ArrayList<Object[]> ents = new ArrayList<>();
         int i = 0;
         while (i < ids.size()) {
             Long t0 = TIMES.get(ids.get(i));
@@ -739,21 +850,27 @@ final class NativeTab {
                         + (j - i > 1 ? " – " + HM.format(new java.util.Date(t0)) : "")) + " · " + (j - i) + " 条";
                 heads.add(new Object[]{out.size(), h, sub, j - i, day, closed});
                 out.add(separator(h, sub, day));
+                ents.add(new Object[]{"H", h, sub, day, closed});
             }
             if (t0 == null || !heads.get(heads.size() - 1)[5].equals(Boolean.TRUE)) {
                 synchronized (LIVE) {
-                    for (int k = i; k < j; k++) out.add(LIVE.get(ids.get(k)));
+                    for (int k = i; k < j; k++) { out.add(LIVE.get(ids.get(k))); ents.add(new Object[]{"P", ids.get(k)}); }
                 }
             }
             i = j;
         }
         if (!out.isEmpty()) out.add(endLabel());
+        ENTRIES = ents;
         HEADERS = heads;
         lastCount = out.size();
         return out;
     }
 
     private static volatile int lastCount = -10;
+    /** what the list shows, for the module's own list: {"H", title, sub, dayKey, closed} or {"P", postId} */
+    private static volatile ArrayList<Object[]> ENTRIES = new ArrayList<>();
+
+    static ArrayList<Object[]> entries() { return ENTRIES; }
     private static volatile ArrayList<Object[]> HEADERS = new ArrayList<>();
 
     /** time groups of the current list: {listIndex, title, subtitle, count} */
