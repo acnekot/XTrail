@@ -512,7 +512,7 @@ final class NativeList {
     private static void open(Activity a, Post p) {
         try {
             NativeTab.noteOpened(p.id);
-            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://x.com/" + (p.handle.isEmpty() ? "i" : p.handle) + "/status/" + p.id));
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://x.com/" + (p.handle.isEmpty() ? "i" : p.handle) + "/status/" + p.id + "/photo/1")); // plain /status/<id> links bounce to home in this build; the photo route opens the detail page
             i.setPackage(a.getPackageName());
             a.startActivity(i);
         } catch (Throwable t) {
