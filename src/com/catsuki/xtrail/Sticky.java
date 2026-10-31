@@ -96,6 +96,10 @@ final class Sticky {
                 col.setPadding(dp(a, 12), dp(a, 12), dp(a, 56), dp(a, 12));
                 title = new TextView(a);
                 title.setTextSize(20);
+                title.setPivotX(0f);
+                title.setPivotY(dp(a, 14));
+                title.setScaleX(REST_SCALE);
+                title.setScaleY(REST_SCALE);
                 title.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
                 title.setTextColor(t.fg);
                 sub = new TextView(a);
@@ -219,6 +223,9 @@ final class Sticky {
             String t = (String) pin[1], s = (String) pin[2];
             if (!t.contentEquals(pinned.title.getText())) pinned.title.setText(t);
             if (!s.contentEquals(pinned.sub.getText())) pinned.sub.setText(s);
+            float k = REST_SCALE + (1f - REST_SCALE) * (Float) pin[4];
+            pinned.title.setScaleX(k);
+            pinned.title.setScaleY(k);
             pinned.setVisibility(View.VISIBLE);
         }
         long now = android.os.SystemClock.uptimeMillis();
@@ -243,6 +250,8 @@ final class Sticky {
      * bottom edge is the top of the list (which moves when X's top bar collapses). Runs at most every 50 ms while the list moves.
      */
     private static boolean measuring, remeasure;
+    /** X draws its own group label at 17sp; the pinned copy is 20sp and scales between the two */
+    private static final float REST_SCALE = 17f / 20f;
     /**
      * The measured top is a frame or two old, but the list's viewport height (reported by X's layout, same frame) grows
      * by exactly what the top bar gives up: the list's bottom edge stays put. So learn that bottom edge from the
@@ -260,6 +269,7 @@ final class Sticky {
         try {
             measuring = true;
             final int vpAtReq = curVp;
+            final boolean dark = Theme.of(a).dark;
             View decor = a.getWindow().getDecorView();
             final int w = decor.getWidth(), h = decor.getHeight() / 3;
             if (w <= 0 || h <= 0) return;
@@ -268,9 +278,10 @@ final class Sticky {
                 try {
                     if (res != android.view.PixelCopy.SUCCESS) return;
                     for (int y = dp(a, 40); y < h; y++) {
-                        if (bright(bm.getPixel(1, y))) {
+                        if (edge(bm.getPixel(1, y), dark)) {
                             int yy = y;
-                            while (yy + 1 < h && bright(bm.getPixel(1, yy + 1))) yy++;
+                            while (yy + 1 < h && edge(bm.getPixel(1, yy + 1), dark)) yy++;
+                            if (yy + 1 >= h) return;
                             lastTop = yy + 2;
                             // only trust a sample taken while the viewport was not changing
                             if (vpAtReq == curVp && curVp > 0) bottomEdge = lastTop + curVp;
@@ -314,8 +325,10 @@ final class Sticky {
         }
     }
 
-    private static boolean bright(int p) {
-        return Color.red(p) > 235 && Color.green(p) > 235 && Color.blue(p) > 235;
+    /** the selected tab's underline: white on the dark page, black on the light one (a plain "bright" test matched the whole light page) */
+    private static boolean edge(int p, boolean dark) {
+        if (dark) return Color.red(p) > 235 && Color.green(p) > 235 && Color.blue(p) > 235;
+        return Color.red(p) < 60 && Color.green(p) < 60 && Color.blue(p) < 60;
     }
 
     private static void place(Activity a) {

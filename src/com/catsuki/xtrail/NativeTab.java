@@ -17,6 +17,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -842,7 +843,10 @@ final class NativeTab {
                 }
                 ROWS = rows;
                 boolean covered = (Integer) cur[0] == idx && off <= 0;
-                Object[] pinned = covered ? null : new Object[]{cur[4], cur[1], cur[2], cur[5]};
+                // while the header itself is scrolling out, the pinned copy grows from X's label size to its own with it
+                int hh = (Integer) cur[0] == idx ? fQ.getInt(first) : 0;
+                float grow = hh > 0 ? Math.min(1f, off / (float) hh) : 1f;
+                Object[] pinned = covered ? null : new Object[]{cur[4], cur[1], cur[2], cur[5], grow};
                 Sticky.update(vis.toArray(new long[0][]), pinned, endBottom, fVp.getInt(u));
             } catch (Throwable t) {
                 // never break X
