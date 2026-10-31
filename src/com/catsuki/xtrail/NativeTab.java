@@ -410,6 +410,13 @@ final class NativeTab {
         } catch (Throwable t) {
             return;
         }
+        if (!reply) { // the getter X exposes for reply context is not there on every screen: the stored item's own fields are
+            try {
+                initStore();
+                reply = REPLY_JSON.matcher((String) jsonEncode.invoke(json, timelineItem, itemSerializer)).find();
+            } catch (Throwable ignored) {
+            }
+        }
         synchronized (LIVE) {
             if (postId != 0L) {
                 // one row per post: reuse the key it was first seen under; detail items carry junk keys (0, MAX)
