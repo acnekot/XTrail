@@ -587,6 +587,7 @@ final class NativeList {
             Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://x.com/" + (p.handle.isEmpty() ? "i" : p.handle) + "/status/" + (p.pid != 0 ? p.pid : p.id) + "/photo/1")); // plain /status/<id> links bounce to home in this build; the photo route opens the detail page
             i.setPackage(a.getPackageName());
             a.startActivity(i);
+            a.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
         } catch (Throwable t) {
             Toast.makeText(a, "无法打开这条推文", Toast.LENGTH_SHORT).show();
         }
