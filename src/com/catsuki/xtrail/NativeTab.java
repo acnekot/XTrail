@@ -62,7 +62,7 @@ final class NativeTab {
     private static final java.util.Set<Long> OPENED = new java.util.HashSet<>();
     /** keys of posts that are replies (a post's JSON carries "repliedPostId":<id> only then) */
     private static final java.util.Set<Long> REPLIES = new java.util.HashSet<>();
-    private static final java.util.regex.Pattern REPLY_JSON = java.util.regex.Pattern.compile("\"repliedPostId\":\\d");
+    private static final java.util.regex.Pattern REPLY_JSON = java.util.regex.Pattern.compile("\"repliedPostId\":\\d", java.util.regex.Pattern.CASE_INSENSITIVE);
     private static volatile String filter = "all";
     private static volatile String timeRange = "all";   // all | today | 7d | 30d
     private static volatile String query = "";

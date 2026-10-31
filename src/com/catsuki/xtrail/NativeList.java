@@ -71,6 +71,7 @@ final class NativeList {
 
     private static final class Post {
         long id, pid, ts;
+        String replyTo = "";
         String name = "", handle = "", avatar, text = "";
         int reply, rt, fav, views;
         boolean snapLiked, hasVideo;
@@ -88,6 +89,8 @@ final class NativeList {
         if (j != null) {
             try {
                 JSONObject o = new JSONObject(j);
+                java.util.regex.Matcher rm = java.util.regex.Pattern.compile("\"repliedToUserScreenName\":\"([^\"]+)\"").matcher(j);
+                if (rm.find()) p.replyTo = rm.group(1);
                 JSONObject cp = o.optJSONObject("postResult");
                 if (cp != null) fill(p, cp.optJSONObject("canonicalPost"), true);
                 if (cp != null && cp.optJSONObject("quotedPost") != null) {
@@ -349,7 +352,7 @@ final class NativeList {
 
     private static final class Cell extends LinearLayout {
         final ImageView avatar;
-        final TextView head, body;
+        final TextView head, body, reply;
         final LinearLayout media;
         final LinearLayout quote;
         final Bar bar;
@@ -371,6 +374,9 @@ final class NativeList {
             head.setSingleLine(true);
             head.setEllipsize(TextUtils.TruncateAt.END);
             head.setTextSize(15);
+            reply = new TextView(a);
+            reply.setTextSize(13);
+            reply.setSingleLine(true);
             body = new TextView(a);
             body.setTextSize(15);
             body.setLineSpacing(0, 1.12f);
@@ -381,6 +387,7 @@ final class NativeList {
             quote.setPadding(dp(a, 12), dp(a, 10), dp(a, 12), dp(a, 10));
             bar = new Bar(a);
             col.addView(head);
+            col.addView(reply);
             LayoutParams bp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             col.addView(body, bp);
             LayoutParams mp = new LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -502,17 +509,70 @@ final class NativeList {
             c.bar.counts[i].setText(count(n[i]));
         }
         View heart = (View) c.bar.icons[2].getParent();
-        heart.setOnClickListener(v -> toggleLike(a, p));
+        heart.setOnClickListener(v -> toggleLike(a, t, c, p));
     }
 
-    private static void toggleLike(Activity a, Post p) {
+    private static void toggleLike(Activity a, Theme t, Cell c, Post p) {
         boolean now = !liked(a, p);
         if (!NativeTab.like(p.id, now)) {
             Toast.makeText(a, "还不能点赞：请先在 X 里随便点一次赞或打开一条推文", Toast.LENGTH_SHORT).show();
             return;
         }
         remember(a, p.id, now);
-        if (adapter != null) adapter.notifyDataSetChanged();
+        // rebind just this bar: a full notifyDataSetChanged swaps the recycled views and would cut the animation
+        bindBar(a, t, c, p);
+        if (now) pop(c.bar.icons[2]);
+        MAIN.postDelayed(() -> { if (adapter != null) adapter.notifyDataSetChanged(); }, 700);
+    }
+
+    /** X's like animation: the heart springs up from small, with a ring and a few sparks flying out */
+    private static void pop(final ImageView icon) {
+        icon.setScaleX(0.3f);
+        icon.setScaleY(0.3f);
+        icon.animate().scaleX(1f).scaleY(1f).setDuration(420).setInterpolator(new android.view.animation.OvershootInterpolator(3.2f)).start();
+        final View host = (View) icon.getParent();
+        final float cx = icon.getLeft() + icon.getWidth() / 2f, cy = icon.getTop() + icon.getHeight() / 2f, r0 = icon.getWidth() / 2f;
+        final Burst d = new Burst(cx, cy, r0);
+        d.setBounds(0, 0, host.getWidth(), host.getHeight());
+        host.getOverlay().add(d);
+        android.animation.ValueAnimator va = android.animation.ValueAnimator.ofFloat(0f, 1f);
+        va.setDuration(480);
+        va.addUpdateListener(an -> {
+            d.set((Float) an.getAnimatedValue());
+        });
+        va.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator an) { host.getOverlay().remove(d); }
+        });
+        va.start();
+    }
+
+    private static final class Burst extends android.graphics.drawable.Drawable {
+        final float cx, cy, r0;
+        final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        float f;
+
+        Burst(float cx, float cy, float r0) { this.cx = cx; this.cy = cy; this.r0 = r0; }
+
+        void set(float v) { f = v; invalidateSelf(); }
+
+        @Override public void draw(android.graphics.Canvas c) {
+            paint.setColor(PINK);
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(r0 * 0.25f * (1f - f));
+            paint.setAlpha((int) (200 * (1f - f)));
+            c.drawCircle(cx, cy, r0 * (0.6f + 1.4f * f), paint);
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            paint.setAlpha((int) (255 * (1f - f)));
+            for (int i = 0; i < 7; i++) {
+                double ang = Math.PI * 2 / 7 * i;
+                float rad = r0 * (1.1f + 1.3f * f);
+                c.drawCircle(cx + (float) Math.cos(ang) * rad, cy + (float) Math.sin(ang) * rad, r0 * 0.16f * (1f - f), paint);
+            }
+        }
+
+        @Override public void setAlpha(int a) { }
+        @Override public void setColorFilter(android.graphics.ColorFilter cf) { }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
     }
 
     private static void open(Activity a, Post p) {
@@ -550,6 +610,15 @@ final class NativeList {
             final Post p = parse((Long) e[1]);
             c.post = p;
             c.head.setText(headline(p, t, true));
+            c.reply.setVisibility(p.replyTo.isEmpty() ? View.GONE : View.VISIBLE);
+            if (!p.replyTo.isEmpty()) {
+                SpannableStringBuilder rs = new SpannableStringBuilder("回复给 ");
+                rs.setSpan(new ForegroundColorSpan(t.sub), 0, rs.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                int st = rs.length();
+                rs.append("@").append(p.replyTo);
+                rs.setSpan(new ForegroundColorSpan(Color.parseColor("#1D9BF0")), st, rs.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                c.reply.setText(rs);
+            }
             c.body.setTextColor(t.fg);
             c.body.setText(p.text);
             c.body.setVisibility(p.text.isEmpty() ? View.GONE : View.VISIBLE);
