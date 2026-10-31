@@ -161,7 +161,7 @@ final class Sticky {
         layer.addView(pinned, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP);
-        lp.topMargin = lastTop >= 0 ? lastTop : dp(a, LIST_TOP_DP);
+        layer.setTranslationY(lastTop >= 0 ? lastTop : dp(a, LIST_TOP_DP));
         ViewGroup decor = (ViewGroup) a.getWindow().getDecorView();
         decor.addView(layer, lp);
         gearHit = new View(a);
@@ -321,8 +321,8 @@ final class Sticky {
     private static void place(Activity a) {
         if (layer == null || layer.getParent() == null) return;
         int top = lastTop >= 0 ? currentTop() : dp(a, LIST_TOP_DP);
-        FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) layer.getLayoutParams();
-        if (lp.topMargin != top) { lp.topMargin = top; layer.setLayoutParams(lp); }
+        // translation, not a margin: a margin change waits for the next layout pass and the header would trail the list by a frame
+        layer.setTranslationY(top);
         if (gearHit != null) {
             // while the top bar is collapsed the gear is off screen: park the hit area there too
             int cy = top - dp(a, GEAR_ABOVE_DP);
