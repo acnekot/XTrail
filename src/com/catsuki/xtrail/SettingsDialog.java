@@ -275,6 +275,13 @@ final class SettingsDialog {
         if (dir != -1) stack.clear();
         LinearLayout col = page("XTrail 设置");
         LinearLayout b = body();
+        final LinearLayout results = body();
+        final LinearLayout normal = body();
+        b.addView(searchBox(results, normal));
+        b.addView(results);
+        b.addView(normal);
+        results.setVisibility(View.GONE);
+        b = normal;
         header(b, "界面");
         toggle(b, "自绘足迹列表（实验）", "用模块自己的列表显示足迹，点赞立即变色。图片和引用推文为简化样式。", Settings.nativeList(), Settings::setNativeList);
         toggle(b, "固定底部导航栏", "滑动时底部导航栏不再隐藏。需重启 X 后生效。", Settings.pinBar(), Settings::setPin);
@@ -284,7 +291,9 @@ final class SettingsDialog {
         link(b, "分组方式", groupName(Settings.group()), this::groups);
         link(b, "最多保留条数", Settings.cap() + " 条", this::caps);
         header(b, "精简（移植自 Piko）");
-        link(b, "屏蔽与精简", "去广告、隐藏推荐模块等，修改后刷新时间线生效", this::tweaks);
+        for (final String[] g : GROUPS) {
+            link(b, g[1], g[2] + "　已开启 " + countOn(g[0]) + " 项", () -> tweaks(g));
+        }
         link(b, "功能开关", "按名称强制开启或关闭 X 的功能开关，需重启 X 生效", this::flags);
         header(b, "数据");
         LinearLayout clear = row("清空足迹", "删除全部足迹记录，此操作不可恢复。", Color.parseColor("#F4212E"));
@@ -320,16 +329,87 @@ final class SettingsDialog {
         showPage(col, b);
     }
 
-    private void tweaks() {
+    /** group id, page title, short description, member keys (comma separated) */
+    private static final String[][] GROUPS = {
+            {"feed", "广告与推荐", "去广告、隐藏推荐模块", "ads,wtf,cts,ctj,detail,bookmarked,pinned,premium,people,news"},
+            {"post", "帖子操作栏", "浏览量、书签按钮", "views,bookmarks"},
+            {"look", "外观与发帖", "字体、发帖按钮菜单", "font,fab"},
+    };
+
+    private static String[] findGroup(String id) {
+        for (String[] g : GROUPS) if (g[0].equals(id)) return g;
+        return null;
+    }
+
+    private static String[] findFilter(String key) {
+        for (String[] f : Tweaks.FILTERS) if (f[0].equals(key)) return f;
+        return null;
+    }
+
+    private static int countOn(String groupId) {
+        int n = 0;
+        for (String k : findGroup(groupId)[3].split(",")) if (Settings.tweak(k)) n++;
+        return n;
+    }
+
+    private void tweaks(String[] g) {
         dir = 1;
         stack.push(this::main);
-        LinearLayout col = page("屏蔽与精简");
+        LinearLayout col = page(g[1]);
         LinearLayout b = body();
-        for (String[] f : Tweaks.FILTERS) {
-            final String key = f[0];
-            toggle(b, f[1], f[2], Settings.tweak(key), on -> Settings.setTweak(key, on));
+        for (String k : g[3].split(",")) {
+            final String[] f = findFilter(k);
+            if (f == null) continue;
+            toggle(b, f[1], f[2], Settings.tweak(k), on -> Settings.setTweak(f[0], on));
         }
         showPage(col, b);
+    }
+
+    private View searchBox(final LinearLayout results, final LinearLayout normal) {
+        final android.widget.EditText et = new android.widget.EditText(a);
+        et.setHint("搜索设置");
+        et.setSingleLine(true);
+        et.setTextSize(15);
+        et.setTextColor(fg);
+        et.setHintTextColor(sub);
+        et.setPadding(dp(16), dp(10), dp(16), dp(10));
+        android.graphics.drawable.GradientDrawable bgd = new android.graphics.drawable.GradientDrawable();
+        bgd.setColor(Color.parseColor(dark ? "#16181C" : "#EFF3F4"));
+        bgd.setCornerRadius(dp(22));
+        et.setBackground(bgd);
+        FrameLayout wrap = new FrameLayout(a);
+        wrap.setPadding(dp(16), dp(10), dp(16), dp(6));
+        wrap.addView(et, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+        et.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int st, int c, int af) { }
+            public void onTextChanged(CharSequence s, int st, int b, int c) { }
+            public void afterTextChanged(android.text.Editable s) {
+                String q = s.toString().trim().toLowerCase();
+                results.removeAllViews();
+                if (q.isEmpty()) {
+                    results.setVisibility(View.GONE);
+                    normal.setVisibility(View.VISIBLE);
+                    return;
+                }
+                normal.setVisibility(View.GONE);
+                results.setVisibility(View.VISIBLE);
+                int hits = 0;
+                for (String[] f : Tweaks.FILTERS) {
+                    final String key = f[0];
+                    if (!(f[1] + f[2]).toLowerCase().contains(q)) continue;
+                    toggle(results, f[1], f[2], Settings.tweak(key), on -> Settings.setTweak(key, on));
+                    hits++;
+                }
+                if (hits == 0) {
+                    TextView none = new TextView(a);
+                    none.setText("没有找到匹配的设置");
+                    none.setTextColor(sub);
+                    none.setPadding(dp(20), dp(24), dp(20), dp(24));
+                    results.addView(none);
+                }
+            }
+        });
+        return wrap;
     }
 
     private void flags() {
