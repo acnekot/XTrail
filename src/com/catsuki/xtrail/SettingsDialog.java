@@ -274,14 +274,14 @@ final class SettingsDialog {
     private void main() {
         if (dir != -1) stack.clear();
         LinearLayout col = page("XTrail 设置");
-        LinearLayout b = body();
+        final LinearLayout top = body();
         final LinearLayout results = body();
         final LinearLayout normal = body();
-        b.addView(searchBox(results, normal));
-        b.addView(results);
-        b.addView(normal);
+        top.addView(searchBox(results, normal));
+        top.addView(results);
+        top.addView(normal);
         results.setVisibility(View.GONE);
-        b = normal;
+        LinearLayout b = normal;
         header(b, "界面");
         toggle(b, "固定底部导航栏", "滑动时底部导航栏不再隐藏。需重启 X 后生效。", Settings.pinBar(), Settings::setPin);
         header(b, "足迹");
@@ -313,7 +313,7 @@ final class SettingsDialog {
         b.addView(imp);
         header(b, "关于");
         link(b, "检查更新", "当前版本 " + Updater.VERSION, () -> Updater.check(a));
-        showPage(col, b);
+        showPage(col, top);
     }
 
     private void categories() {
