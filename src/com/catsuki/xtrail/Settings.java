@@ -38,9 +38,7 @@ final class Settings {
         }
     }
 
-    static boolean nativeList() { init(); return prefs == null || prefs.getBoolean("native_list", true); }
 
-    static void setNativeList(boolean v) { init(); put("native_list", v); }
 
     static boolean pinBar() { init(); return pin; }
 

@@ -117,7 +117,6 @@ final class NativeTab {
         step("title", NativeTab::hookTitle);
         step("tab-chevron", NativeTab::hookTabChevron);
         step("tab-click", NativeTab::hookTabClick);
-        step("likes", NativeTab::hookLikes);
     }
 
     // ---------------------------------------------------------------- module list support
@@ -167,62 +166,6 @@ final class NativeTab {
         } catch (Throwable ignored) {
         }
         return null;
-    }
-
-    private static final java.util.List<Object> ALL_ACTIONS = new java.util.concurrent.CopyOnWriteArrayList<>();
-    private static volatile Object actions;   // com.x.repositories.post.actions.i0, captured when X builds or uses it
-
-    /** X's repository that queues likes: remember the instance so the module's list can like through it */
-    private static void hookLikes() throws Throwable {
-        Class<?> k = Symbols.load(cl, "com.x.repositories.post.actions.i0");
-        for (Constructor<?> c : k.getDeclaredConstructors()) {
-            mod.hook(c).intercept(chain -> {
-                Object r = chain.proceed();
-                ALL_ACTIONS.add(chain.getThisObject());
-                return r;
-            });
-        }
-        for (Method m : k.getDeclaredMethods()) {
-            if (!m.getName().equals("d") || m.getParameterCount() == 0) continue;
-            mod.hook(m).intercept(chain -> {
-                actions = chain.getThisObject();
-                try {
-                    String s = String.valueOf(chain.getArg(0));
-                    java.util.regex.Matcher id = java.util.regex.Pattern.compile("targetId=([0-9]+)").matcher(s);
-                    if (id.find()) {
-                        if (s.contains("post_action_type=Favorite")) NativeList.likedElsewhere(Long.parseLong(id.group(1)), true);
-                        else if (s.contains("post_action_type=Unfavorite")) NativeList.likedElsewhere(Long.parseLong(id.group(1)), false);
-                    }
-                } catch (Throwable ignored) {
-                }
-                return chain.proceed();
-            });
-        }
-    }
-
-    /** like or unlike a stored post through X's own action queue; false when that is not possible yet */
-    static boolean like(long id, boolean on) {
-        try {
-            // one repository per signed-in account: prefer the one X itself used last, else the first built (the primary account)
-            Object repo = actions != null ? actions : (ALL_ACTIONS.isEmpty() ? null : ALL_ACTIONS.get(0));
-            Object item;
-            synchronized (LIVE) { item = LIVE.get(id); }
-            if (repo == null) return false;
-            for (Method m : repo.getClass().getDeclaredMethods()) {
-                Class<?>[] p = m.getParameterTypes();
-                if (!(m.getName().equals("c") && p.length == 7 && p[0] == repo.getClass() && p[2].isEnum())) continue;
-                Object post = findByClass(item, p[1].getName(), 0);   // 帖子类和动作类型枚举每个版本换名，从签名里取
-                if (post == null) return false;
-                Object type = p[2].getField(on ? "Favorite" : "Unfavorite").get(null);
-                m.setAccessible(true);
-                Object extras = cl.loadClass("kotlin.collections.builders.MapBuilder").getConstructor().newInstance();
-                m.invoke(null, repo, post, type, on ? "LIKE" : "UNLIKE", extras, null, 16);
-                return true;
-            }
-        } catch (Throwable t) {
-            mod.log(android.util.Log.WARN, TAG, "like failed: " + t);
-        }
-        return false;
     }
 
     // ---------------------------------------------------------------- persistence
@@ -542,7 +485,6 @@ final class NativeTab {
                 synchronized (OURS) {
                     for (Object flow : OURS.values()) setState(flow, buildState());
                 }
-                NativeList.dataChanged();
             } catch (Throwable t) {
                 mod.log(android.util.Log.WARN, TAG, "filter failed: " + t);
             }
@@ -589,7 +531,6 @@ final class NativeTab {
             synchronized (OURS) {
                 for (Object flow : OURS.values()) setState(flow, buildState());
             }
-            NativeList.dataChanged();
             save();
         } catch (Throwable t) {
             mod.log(android.util.Log.WARN, TAG, "publish failed: " + t);

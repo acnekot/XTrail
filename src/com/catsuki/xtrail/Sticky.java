@@ -201,21 +201,6 @@ final class Sticky {
         Activity a = XTrailModule.topActivity();
         if (a == null || !NativeTab.ourVisible()) { hideNow(); return; }
         ensure(a);
-        if (NativeList.enabled()) {
-            // the module draws the list itself: only the position of X's list is needed
-            for (Row r : rows) r.setVisibility(View.GONE);
-            pinned.setVisibility(View.GONE);
-            cover.setVisibility(View.GONE);
-            NativeList.show(a);
-            lastMeasure = android.os.SystemClock.uptimeMillis();
-            measure(a);
-            place(a);
-            MAIN.removeCallbacks(REMEASURE);
-            MAIN.postDelayed(REMEASURE, 120);
-            tick();
-            return;
-        }
-        NativeList.hide();
         int i = 0;
         for (long[] h : vis) {
             Row row;
@@ -355,10 +340,6 @@ final class Sticky {
         int top = lastTop >= 0 ? currentTop() : dp(a, LIST_TOP_DP);
         // translation, not a margin: a margin change waits for the next layout pass and the header would trail the list by a frame
         layer.setTranslationY(top);
-        if (NativeList.shown()) {
-            View decor = a.getWindow().getDecorView();
-            NativeList.place(a, top, bottomEdge > 0 && bottomEdge > top ? Math.min(bottomEdge, decor.getHeight()) : decor.getHeight());
-        }
         if (gearHit != null) {
             // while the top bar is collapsed the gear is off screen: park the hit area there too
             int cy = top - dp(a, GEAR_ABOVE_DP);
@@ -387,7 +368,6 @@ final class Sticky {
      * "DecorView contains null child". The layer is only really detached when another Activity takes over.
      */
     private static void hideNow() {
-        NativeList.hide();
         if (layer != null) layer.setVisibility(View.GONE);
         if (gearHit != null) gearHit.setVisibility(View.GONE);
     }
