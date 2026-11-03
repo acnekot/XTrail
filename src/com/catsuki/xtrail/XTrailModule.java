@@ -317,7 +317,69 @@ public class XTrailModule extends XposedModule {
                 log(android.util.Log.WARN, TAG, "timeline hook skipped: " + e[0] + " " + t);
             }
         }
+        ok += scanTimelines(cl, item, done);
         log(android.util.Log.INFO, TAG, "timeline hooks: " + ok + "/" + TIMELINES.length);
+    }
+
+    private static final String[][] TIMELINE_PKGS = {
+            {"com.x.home.", "home"}, {"com.x.search.result.", "search"}, {"com.x.profile.", "profile"},
+            {"com.x.notifications.", "notif"}, {"com.x.list.", "list"}, {"com.x.communities.", "comm"},
+            {"com.x.video.tab.", "other"}, {"com.x.urt.generictimeline.", "other"}, {"com.x.postdetail.", "detail"},
+    };
+
+    /**
+     * 名字被 R8 重排后硬编码的组件名会落空；这里直接扫 dex 里这些包下的类，按 (int, 条目) 的方法形状找渲染方法。
+     * 已经按名字挂上的类不会重复挂。
+     */
+    private int scanTimelines(ClassLoader cl, Class<?> item, java.util.Set<Class<?>> done) {
+        int ok = 0, seen = 0;
+        try {
+            Object list = findField(cl.getClass().getSuperclass(), "pathList").get(cl);
+            Object[] els = (Object[]) findField(list.getClass(), "dexElements").get(list);
+            for (Object el : els) {
+                Object df = findField(el.getClass(), "dexFile").get(el);
+                if (!(df instanceof dalvik.system.DexFile)) continue;
+                java.util.Enumeration<String> en = ((dalvik.system.DexFile) df).entries();
+                while (en.hasMoreElements()) {
+                    String n = en.nextElement();
+                    String cat = null;
+                    for (String[] pk : TIMELINE_PKGS) if (n.startsWith(pk[0])) cat = pk[1];
+                    if (cat == null) continue;
+                    try {
+                        Class<?> c = Class.forName(n, false, cl);
+                        if (done.contains(c)) continue;
+                        Method v = Symbols.timelineMethod(c, item);
+                        if (v == null) continue;
+                        done.add(c);
+                        final String cc = cat;
+                        hook(v).intercept(chain -> {
+                            recordItem(cc, chain.getArg(1));
+                            return chain.proceed();
+                        });
+                        ok++;
+                        log(android.util.Log.INFO, TAG, "timeline hook (scan): " + n + " " + cat);
+                    } catch (Throwable ignored) {
+                    }
+                    seen++;
+                }
+            }
+        } catch (Throwable t) {
+            log(android.util.Log.WARN, TAG, "timeline scan failed: " + t);
+        }
+        log(android.util.Log.INFO, TAG, "timeline scan: " + seen + " classes, " + ok + " hooked");
+        return ok;
+    }
+
+    private static java.lang.reflect.Field findField(Class<?> k, String name) throws Exception {
+        for (; k != null; k = k.getSuperclass()) {
+            try {
+                java.lang.reflect.Field f = k.getDeclaredField(name);
+                f.setAccessible(true);
+                return f;
+            } catch (NoSuchFieldException ignored) {
+            }
+        }
+        throw new NoSuchFieldException(name);
     }
 
     private void hookDetail(ClassLoader cl) throws Throwable {

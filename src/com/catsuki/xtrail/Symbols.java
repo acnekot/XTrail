@@ -43,7 +43,7 @@ final class Symbols {
 
     static {
         // ---- 应用骨架 / 底栏 ----
-        add("com.x.ui.common.n2", "com.x.ui.common.k2", "com.x.ui.common.p2");
+        add("com.x.ui.common.n2", "com.x.ui.common.k2", "com.x.ui.common.p2", "com.x.ui.common.t2");
 
         // ---- 特性开关（X 未混淆，名字稳定，登记只为统一入口） ----
         add("com.x.featureswitches.FeatureSwitchesRepositoryImpl");
@@ -74,8 +74,8 @@ final class Symbols {
         add("com.x.navigation.x9", "com.x.navigation.y9", "com.x.navigation.j9");
 
         // ---- 详情页参数 ----
-        add("com.x.navigation.fl", "com.x.navigation.nl", "com.x.navigation.qk");
-        add("com.x.navigation.il", "com.x.navigation.ql", "com.x.navigation.tk");
+        add("com.x.navigation.fl", "com.x.navigation.nl", "com.x.navigation.qk", "com.x.navigation.dm");
+        add("com.x.navigation.il", "com.x.navigation.ql", "com.x.navigation.tk", "com.x.navigation.gm");
         add("com.x.navigation.ll", "com.x.navigation.tl");
 
         // ---- 标签描述符 / 插槽 / 图标 ----
@@ -306,7 +306,7 @@ final class Symbols {
             case "com.x.bookmarks.history.x1":    // TabReClicked：int 字段
                 return c.getDeclaredFields().length == 1 && hasFieldType(c, int.class);
             case "com.x.models.timelines.items.o0": // 条目接口：c()/m()/s() 三个无参方法
-                return c.isInterface() && hasMethod(c, "c", 0) && hasMethod(c, "m", 0) && hasMethod(c, "s", 0);
+                return c.isInterface() && (hasMethod(c, "c", 0) || hasMethod(c, "a", 0)) && hasMethod(c, "m", 0) && hasMethod(c, "s", 0);
             case "com.x.models.od":                // TimelineMessagePrompt：(String, String, ?) 构造
                 for (Constructor<?> ct : c.getDeclaredConstructors()) {
                     Class<?>[] p = ct.getParameterTypes();
