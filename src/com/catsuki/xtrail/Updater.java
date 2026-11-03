@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 /** Checks the latest GitHub release of the module; runs inside X, so it only needs X's own network access. */
 final class Updater {
     /** keep in step with versionName in AndroidManifest.xml */
-    static final String VERSION = "0.5.1";
+    static final String VERSION = "0.6.0";
     private static final String API = "https://api.github.com/repos/acnekot/XTrail/releases/latest";
 
     private static String field(String json, String key) {
