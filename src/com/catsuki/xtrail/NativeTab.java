@@ -711,7 +711,9 @@ final class NativeTab {
         });
         Method l = null;
         for (Method m : u.getDeclaredMethods()) {
-            if (m.getName().equals("l") && m.getParameterTypes().length == 1) l = m;
+            Class<?>[] pt = m.getParameterTypes();
+            if (pt.length == 1 && m.getReturnType() == void.class && pt[0].getName().startsWith("com.x.urt.")
+                    && (m.getName().equals("l") || m.getName().equals("k") || l == null)) l = m;
         }
         if (l != null) {
             mod.hook(l).intercept(chain -> OURS.containsKey(chain.getThisObject()) ? null : chain.proceed());
@@ -733,7 +735,7 @@ final class NativeTab {
 
     private static Object newFlow() {
         try {
-            Method c = Symbols.load(cl, "kotlinx.coroutines.flow.a0").getMethod("c", Object.class);
+            Method c = Symbols.load(cl, "kotlinx.coroutines.flow.b0").getMethod("c", Object.class);
             return c.invoke(null, buildState());
         } catch (Throwable t) {
             mod.log(android.util.Log.ERROR, TAG, "newFlow failed", t);

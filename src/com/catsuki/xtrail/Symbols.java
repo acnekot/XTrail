@@ -49,7 +49,7 @@ final class Symbols {
         add("com.x.featureswitches.FeatureSwitchesRepositoryImpl");
 
         // ---- 模型 ----
-        add("com.x.models.s5", "com.x.models.t5", "com.x.models.u5");
+        add("com.x.models.s5", "com.x.models.w5", "com.x.models.t5", "com.x.models.u5");
         add("com.x.models.u0", "com.x.models.v0");
         add("com.x.models.eg", "com.x.models.fg");
         add("com.x.models.n6");
@@ -59,19 +59,19 @@ final class Symbols {
         add("com.x.models.timelines.v", "com.x.models.timelines.u");
 
         // ---- 时间线状态 ----
-        add("com.x.urt.b2", "com.x.urt.g2", "com.x.urt.e2");
-        add("com.x.urt.x1", "com.x.urt.c2", "com.x.urt.d2", "com.x.urt.e2");
+        add("com.x.urt.b2", "com.x.urt.f2", "com.x.urt.g2", "com.x.urt.e2");
+        add("com.x.urt.x1", "com.x.urt.d2", "com.x.urt.c2", "com.x.urt.e2");
         add("com.x.repositories.post.actions.i0", "com.x.repositories.post.actions.h0");
 
         // ---- 时间线条目 ----
         add("com.x.models.timelines.items.o0", "com.x.models.timelines.items.p0");
-        add("com.x.models.timelines.items.l1", "com.x.models.timelines.items.k1");
+        add("com.x.models.timelines.items.l1", "com.x.models.timelines.items.j1", "com.x.models.timelines.items.k1");
         add("com.x.models.timelines.items.v0", "com.x.models.timelines.items.u0");
 
         // ---- 历史页导航（Pages 的三种配置） ----
-        add("com.x.navigation.u9", "com.x.navigation.v9", "com.x.navigation.g9");
-        add("com.x.navigation.w9", "com.x.navigation.x9", "com.x.navigation.i9");
-        add("com.x.navigation.x9", "com.x.navigation.y9", "com.x.navigation.j9");
+        add("com.x.navigation.u9", "com.x.navigation.da", "com.x.navigation.v9", "com.x.navigation.g9");
+        add("com.x.navigation.w9", "com.x.navigation.fa", "com.x.navigation.x9", "com.x.navigation.i9");
+        add("com.x.navigation.x9", "com.x.navigation.ga", "com.x.navigation.y9", "com.x.navigation.j9");
 
         // ---- 详情页参数 ----
         add("com.x.navigation.fl", "com.x.navigation.nl", "com.x.navigation.qk", "com.x.navigation.dm");
@@ -87,12 +87,12 @@ final class Symbols {
 
         // ---- 历史页组件 ----
         add("com.x.bookmarks.history.c");
-        add("com.x.bookmarks.history.q", "com.x.bookmarks.history.r");
-        add("com.x.bookmarks.history.u", "com.x.bookmarks.history.v");
-        add("com.x.bookmarks.history.x1", "com.x.bookmarks.history.s1", "com.x.bookmarks.history.z1", "com.x.bookmarks.history.y1");
+        add("com.x.bookmarks.history.q", "com.x.bookmarks.history.p", "com.x.bookmarks.history.r");
+        add("com.x.bookmarks.history.u", "com.x.bookmarks.history.t", "com.x.bookmarks.history.v");
+        add("com.x.bookmarks.history.x1", "com.x.bookmarks.history.p1", "com.x.bookmarks.history.s1", "com.x.bookmarks.history.z1", "com.x.bookmarks.history.y1");
 
         // ---- 第三方库（同样被 X 的 R8 重排） ----
-        add("kotlinx.coroutines.flow.b0", "kotlinx.coroutines.flow.a0");
+        add("kotlinx.coroutines.flow.b0", "kotlinx.coroutines.flow.b3", "kotlinx.coroutines.flow.b0", "kotlinx.coroutines.flow.a0");
         add("kotlinx.serialization.json.c");
         add("kotlinx.serialization.KSerializer");
         add("kotlinx.serialization.a");
@@ -100,7 +100,7 @@ final class Symbols {
         add("androidx.compose.foundation.lazy.i0");
         add("androidx.compose.foundation.lazy.u");
         add("androidx.compose.foundation.lazy.v");
-        add("com.arkivanov.decompose.router.pages.f");
+        add("com.arkivanov.decompose.router.pages.f", "com.arkivanov.decompose.router.pages.h");
         add("com.arkivanov.essenty.lifecycle.e");
 
         // ---- 时间线组件（用于按来源分类记录） ----
@@ -317,13 +317,19 @@ final class Symbols {
                 return c.getDeclaredMethods().length + c.getDeclaredFields().length >= 15;
             case "com.x.bookmarks.history.u":      // Likes 时间线组件：d() 无参 + 体量大
                 return hasMethod(c, "d", 0) && c.getDeclaredMethods().length + c.getDeclaredFields().length >= 15;
+            case "com.arkivanov.decompose.router.pages.f": // Pages：(int, List) 构造
+                for (Constructor<?> ct : c.getDeclaredConstructors()) {
+                    Class<?>[] p = ct.getParameterTypes();
+                    if (p.length == 2 && p[0] == int.class && java.util.List.class.isAssignableFrom(p[1])) return true;
+                }
+                return false;
             case "com.x.bookmarks.history.c":     // 子工厂：Function2
                 return hasMethod(c, "invoke", 2);
 
             case "kotlinx.coroutines.flow.b0": {  // StateFlowKt：静态 c(Object) 返回 flow
                 for (Method m : c.getDeclaredMethods())
                     if (m.getName().equals("c") && m.getParameterTypes().length == 1
-                            && m.getParameterTypes()[0] == Object.class) return true;
+                            && m.getParameterTypes()[0] == Object.class && hasMethod(m.getReturnType(), "getValue", 0)) return true;
                 return false;
             }
 

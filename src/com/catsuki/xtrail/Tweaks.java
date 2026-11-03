@@ -106,7 +106,9 @@ final class Tweaks {
         final Class<?> success = Symbols.load(cl, "com.x.urt.b2");
         final Class<?> item = Symbols.load(cl, "com.x.models.timelines.items.o0");
         final Class<?> immutable = Symbols.load(cl, "kotlinx.collections.immutable.b");
-        entryId = item.getMethod("c");
+        Method eid;
+        try { eid = item.getMethod("c"); } catch (NoSuchMethodException e) { eid = item.getMethod("a"); }
+        entryId = eid;
         final Object favs = Symbols.load(cl, "com.x.models.timelines.u").getField("USER_PROFILE_FAVS").get(null);
         Constructor<?> ctor = null;
         for (Constructor<?> c : success.getDeclaredConstructors()) if (c.getParameterTypes().length == 5) ctor = c;
