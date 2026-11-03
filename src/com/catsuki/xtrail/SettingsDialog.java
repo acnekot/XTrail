@@ -30,7 +30,7 @@ import java.util.ArrayDeque;
 final class SettingsDialog {
     private final Activity a;
     private final boolean dark;
-    private final int bg, fg, sub, line, blue;
+    private final int bg, fg, sub, line, blue, card;
     private final ArrayDeque<Runnable> stack = new ArrayDeque<>();
     private final FrameLayout root;
     private Dialog dialog;
@@ -38,11 +38,12 @@ final class SettingsDialog {
     private SettingsDialog(Activity a) {
         this.a = a;
         dark = Theme.of(a).dark;
-        bg = dark ? Color.BLACK : Color.WHITE;
-        fg = Color.parseColor(dark ? "#E7E9EA" : "#0F1419");
-        sub = Color.parseColor("#71767B");
-        line = Color.parseColor(dark ? "#2F3336" : "#EFF3F4");
-        blue = Color.parseColor("#1D9BF0");
+        bg = Color.parseColor(dark ? "#1F2026" : "#F9F9FF");
+        fg = Color.parseColor(dark ? "#E3E2E9" : "#1A1B20");
+        sub = Color.parseColor(dark ? "#C4C6D0" : "#44474F");
+        line = Color.parseColor(dark ? "#2F3036" : "#E0E2EC");
+        blue = Color.parseColor(dark ? "#A8C7FA" : "#0B57D0");
+        card = Color.parseColor(dark ? "#37383E" : "#E8E9F0");
         root = new FrameLayout(a);
         root.setBackgroundColor(bg);
     }
@@ -128,16 +129,14 @@ final class SettingsDialog {
             else back();
         });
         bar.addView(hit, new LinearLayout.LayoutParams(dp(56), dp(56)));
+        col.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)));
         TextView t = new TextView(a);
         t.setText(title);
-        t.setTextSize(20);
-        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        t.setTextSize(32);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         t.setTextColor(fg);
-        bar.addView(t);
-        col.addView(bar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)));
-        View div = new View(a);
-        div.setBackgroundColor(line);
-        col.addView(div, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        t.setPadding(dp(24), dp(8), dp(24), dp(12));
+        col.addView(t);
         return col;
     }
 
@@ -145,6 +144,7 @@ final class SettingsDialog {
     private int dir;
 
     private void showPage(LinearLayout col, LinearLayout body) {
+        restyle(body);
         ScrollView sv = new ScrollView(a);
         sv.addView(body, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         col.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -185,6 +185,93 @@ final class SettingsDialog {
 
     private boolean leaving;
 
+
+    /** Material 3 switch: pill track, round thumb that carries a check (on) or a cross (off) */
+    private void styleSwitch(Switch sw) {
+        final int on = blue, offTrack = card, outline = Color.parseColor(dark ? "#8E9099" : "#74777F");
+        final int onThumb = Color.parseColor(dark ? "#062E6F" : "#FFFFFF"), offThumb = outline;
+        android.graphics.drawable.GradientDrawable t1 = new android.graphics.drawable.GradientDrawable();
+        t1.setColor(on);
+        t1.setCornerRadius(dp(16));
+        t1.setSize(dp(52), dp(32));
+        android.graphics.drawable.GradientDrawable t0 = new android.graphics.drawable.GradientDrawable();
+        t0.setColor(offTrack);
+        t0.setStroke(dp(2), outline);
+        t0.setCornerRadius(dp(16));
+        t0.setSize(dp(52), dp(32));
+        android.graphics.drawable.StateListDrawable track = new android.graphics.drawable.StateListDrawable();
+        track.addState(new int[]{android.R.attr.state_checked}, t1);
+        track.addState(new int[]{}, t0);
+        final float d = a.getResources().getDisplayMetrics().density;
+        final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), ink = new Paint(Paint.ANTI_ALIAS_FLAG);
+        ink.setStyle(Paint.Style.STROKE);
+        ink.setStrokeWidth(2f * d);
+        ink.setStrokeCap(Paint.Cap.ROUND);
+        ink.setStrokeJoin(Paint.Join.ROUND);
+        sw.setTrackDrawable(track);
+        sw.setThumbDrawable(new android.graphics.drawable.Drawable() {
+            boolean checked;
+            @Override public void draw(Canvas c) {
+                float cx = getBounds().exactCenterX(), cy = getBounds().exactCenterY(), r = 12f * d;
+                fill.setColor(checked ? onThumb : offThumb);
+                c.drawCircle(cx, cy, r, fill);
+                Path p = new Path();
+                if (checked) {
+                    ink.setColor(on);
+                    p.moveTo(cx - 5f * d, cy + 0.5f * d);
+                    p.lineTo(cx - 1.5f * d, cy + 4f * d);
+                    p.lineTo(cx + 5.5f * d, cy - 4f * d);
+                } else {
+                    ink.setColor(offTrack);
+                    p.moveTo(cx - 4f * d, cy - 4f * d);
+                    p.lineTo(cx + 4f * d, cy + 4f * d);
+                    p.moveTo(cx + 4f * d, cy - 4f * d);
+                    p.lineTo(cx - 4f * d, cy + 4f * d);
+                }
+                c.drawPath(p, ink);
+            }
+            @Override public boolean isStateful() { return true; }
+            @Override protected boolean onStateChange(int[] st) {
+                boolean now = false;
+                for (int x : st) if (x == android.R.attr.state_checked) now = true;
+                boolean ch = now != checked;
+                checked = now;
+                return ch;
+            }
+            @Override public int getIntrinsicWidth() { return (int) (32 * d); }
+            @Override public int getIntrinsicHeight() { return (int) (32 * d); }
+            @Override public void setAlpha(int al) { }
+            @Override public void setColorFilter(android.graphics.ColorFilter f) { }
+            @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        });
+        sw.setSwitchMinWidth(dp(52));
+        sw.setSwitchPadding(0);
+    }
+
+    /** consecutive rows form one card group: big outer corners, small inner ones, thin gaps */
+    private void restyle(ViewGroup g) {
+        int n = g.getChildCount();
+        for (int i = 0; i < n; i++) {
+            View v = g.getChildAt(i);
+            if (v.getTag() == null && v instanceof ViewGroup) { restyle((ViewGroup) v); continue; }
+            if (!"row".equals(v.getTag())) continue;
+            boolean first = i == 0 || !"row".equals(g.getChildAt(i - 1).getTag());
+            boolean last = i == n - 1 || !"row".equals(g.getChildAt(i + 1).getTag());
+            float big = dp(26), small = dp(6);
+            float tl = first ? big : small, bl = last ? big : small;
+            android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+            shape.setColor(card);
+            shape.setCornerRadii(new float[]{tl, tl, tl, tl, bl, bl, bl, bl});
+            android.graphics.drawable.GradientDrawable mask = new android.graphics.drawable.GradientDrawable();
+            mask.setColor(Color.WHITE);
+            mask.setCornerRadii(new float[]{tl, tl, tl, tl, bl, bl, bl, bl});
+            v.setBackground(new android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.parseColor(dark ? "#22FFFFFF" : "#1A000000")), shape, mask));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(dp(16), first ? 0 : dp(3), dp(16), 0);
+            v.setLayoutParams(lp);
+        }
+    }
+
     private LinearLayout body() {
         LinearLayout l = new LinearLayout(a);
         l.setOrientation(LinearLayout.VERTICAL);
@@ -194,10 +281,11 @@ final class SettingsDialog {
     private void header(LinearLayout l, String s) {
         TextView t = new TextView(a);
         t.setText(s);
-        t.setTextSize(13);
-        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        t.setTextColor(sub);
-        t.setPadding(dp(16), dp(20), dp(16), dp(6));
+        t.setTextSize(14);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
+        t.setTextColor(blue);
+        t.setPadding(dp(28), dp(22), dp(28), dp(8));
+        t.setTag("head");
         l.addView(t);
     }
 
@@ -205,21 +293,23 @@ final class SettingsDialog {
         LinearLayout r = new LinearLayout(a);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setMinimumHeight(dp(subtitle == null ? 56 : 68));
-        r.setPadding(dp(16), dp(8), dp(16), dp(8));
+        r.setMinimumHeight(dp(subtitle == null ? 60 : 76));
+        r.setPadding(dp(24), dp(12), dp(20), dp(12));
+        r.setTag("row");
         LinearLayout texts = new LinearLayout(a);
         texts.setOrientation(LinearLayout.VERTICAL);
         TextView t = new TextView(a);
         t.setText(title);
-        t.setTextSize(16);
+        t.setTextSize(17);
+        t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         t.setTextColor(color);
         texts.addView(t);
         if (subtitle != null) {
             TextView s = new TextView(a);
             s.setText(subtitle);
-            s.setTextSize(13);
+            s.setTextSize(14);
             s.setTextColor(sub);
-            s.setPadding(0, dp(2), 0, 0);
+            s.setPadding(0, dp(3), 0, 0);
             texts.addView(s);
         }
         r.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -234,11 +324,11 @@ final class SettingsDialog {
         LinearLayout r = row(title, subtitle, fg);
         final Switch sw = new Switch(a);
         sw.setChecked(on);
-        sw.setTrackTintList(new ColorStateList(new int[][]{{android.R.attr.state_checked}, {}},
-                new int[]{blue, Color.parseColor(dark ? "#39434A" : "#CFD9DE")}));
-        sw.setThumbTintList(ColorStateList.valueOf(Color.WHITE));
+        styleSwitch(sw);
         sw.setOnCheckedChangeListener((b, v) -> f.set(v));
-        r.addView(sw);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        slp.leftMargin = dp(16);
+        r.addView(sw, slp);
         r.setOnClickListener(v -> sw.toggle());
         l.addView(r);
     }
@@ -247,7 +337,7 @@ final class SettingsDialog {
         LinearLayout r = row(title, subtitle, fg);
         TextView chev = new TextView(a);
         chev.setText("›");
-        chev.setTextSize(24);
+        chev.setTextSize(26);
         chev.setTextColor(sub);
         r.addView(chev);
         r.setOnClickListener(v -> open.run());
@@ -373,12 +463,12 @@ final class SettingsDialog {
         et.setHintTextColor(sub);
         et.setPadding(dp(16), dp(10), dp(16), dp(10));
         android.graphics.drawable.GradientDrawable bgd = new android.graphics.drawable.GradientDrawable();
-        bgd.setColor(Color.parseColor(dark ? "#16181C" : "#EFF3F4"));
-        bgd.setCornerRadius(dp(22));
+        bgd.setColor(card);
+        bgd.setCornerRadius(dp(26));
         et.setBackground(bgd);
         FrameLayout wrap = new FrameLayout(a);
         wrap.setPadding(dp(16), dp(10), dp(16), dp(6));
-        wrap.addView(et, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)));
+        wrap.addView(et, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
         et.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence s, int st, int c, int af) { }
             public void onTextChanged(CharSequence s, int st, int b, int c) { }
@@ -399,6 +489,7 @@ final class SettingsDialog {
                     toggle(results, f[1], f[2], Settings.tweak(key), on -> Settings.setTweak(key, on));
                     hits++;
                 }
+                restyle(results);
                 if (hits == 0) {
                     TextView none = new TextView(a);
                     none.setText("没有找到匹配的设置");
