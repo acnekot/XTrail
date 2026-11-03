@@ -117,6 +117,7 @@ final class NativeTab {
         step("title", NativeTab::hookTitle);
         step("tab-chevron", NativeTab::hookTabChevron);
         step("tab-click", NativeTab::hookTabClick);
+        step("likes", NativeTab::hookLikes);
     }
 
     // ---------------------------------------------------------------- module list support
@@ -1057,6 +1058,174 @@ final class NativeTab {
                 Object r = m.invoke(backing, args);
                 if (r instanceof List && iface.isAssignableFrom(m.getReturnType())) return immutableList(iface, (List<Object>) r);
                 return r;
+            }
+        });
+    }
+
+    // ---------------------------------------------------------------- like feedback
+
+    /** X's like queue: watch it, so a like given on our page shows at once (our items are snapshots, X only updates its own) */
+    private static void hookLikes() throws Throwable {
+        Class<?> k = Symbols.load(cl, "com.x.durableactions.o");
+        for (java.lang.reflect.Constructor<?> c : k.getDeclaredConstructors()) {
+            mod.log(android.util.Log.INFO, TAG, "likes: ctor " + c.getParameterCount());
+            if (c.getParameterCount() != 10) continue;
+            mod.hook(c).intercept(chain -> {
+                Object r = chain.proceed();
+                try {
+                    mod.log(android.util.Log.INFO, TAG, "action ctor: " + chain.getArg(1) + " " + chain.getArg(2));
+                    Object type = chain.getArg(1), target = chain.getArg(2);
+                    if (type instanceof String && target instanceof String && ((String) target).matches("[0-9]+")) {
+                        String t = (String) type;
+                        if (t.equals("LIKE") || t.equals("UNLIKE")) {
+                            mod.log(android.util.Log.INFO, TAG, "like call: " + t + " " + target);
+                            applyLike(Long.parseLong((String) target), t.equals("LIKE"));
+                        }
+                    }
+                } catch (Throwable ignored) {
+                }
+                return r;
+            });
+        }
+    }
+
+    private static Object unsafe;
+    private static Method allocate;
+
+    private static Object shallowCopy(Object o) throws Throwable {
+        if (unsafe == null) {
+            Class<?> u = Class.forName("sun.misc.Unsafe");
+            Field f = u.getDeclaredField("theUnsafe");
+            f.setAccessible(true);
+            unsafe = f.get(null);
+            allocate = u.getMethod("allocateInstance", Class.class);
+        }
+        Object c = allocate.invoke(unsafe, o.getClass());
+        for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            for (Field f : k.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                f.setAccessible(true);
+                f.set(c, f.get(o));
+            }
+        }
+        return c;
+    }
+
+    /** index of the like/unlike entry when this is a list of inline-action entries (enum + count + flag), else -1 */
+    private static int likeIndex(Object list) throws Throwable {
+        if (!(list instanceof java.util.List)) return -1;
+        java.util.List<?> l = (java.util.List<?>) list;
+        for (int i = 0; i < l.size(); i++) {
+            Object e = l.get(i);
+            if (e == null || !e.getClass().getName().startsWith("com.x.models.")) continue;
+            for (Field f : e.getClass().getDeclaredFields()) {
+                if (!f.getType().isEnum()) continue;
+                f.setAccessible(true);
+                Object v = f.get(e);
+                if (v == null) continue;
+                String n = ((Enum<?>) v).name();
+                if (n.equals("Favorite") || n.equals("Unfavorite")) return i;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean liked(Object entry) throws Throwable {
+        for (Field f : entry.getClass().getDeclaredFields()) {
+            if (!f.getType().isEnum()) continue;
+            f.setAccessible(true);
+            Object v = f.get(entry);
+            if (v != null && ((Enum<?>) v).name().equals("Unfavorite")) return true;
+        }
+        return false;
+    }
+
+    /** {owner, field, owner, field, ...} from the item down to the action list, or null */
+    private static ArrayList<Object> pathToLikes(Object o, int depth, java.util.IdentityHashMap<Object, Boolean> seen) throws Throwable {
+        if (o == null || depth > 6 || !o.getClass().getName().startsWith("com.x.models.") || seen.put(o, true) != null) return null;
+        for (Class<?> k = o.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+            for (Field f : k.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || f.getType().isPrimitive()) continue;
+                f.setAccessible(true);
+                Object v = f.get(o);
+                if (v == null) continue;
+                if (likeIndex(v) >= 0) {
+                    ArrayList<Object> r = new ArrayList<>();
+                    r.add(o);
+                    r.add(f);
+                    return r;
+                }
+                ArrayList<Object> sub = pathToLikes(v, depth + 1, seen);
+                if (sub != null) {
+                    sub.add(0, f);
+                    sub.add(0, o);
+                    return sub;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** the stored item of a liked post gets its Favorite entry swapped (count +-1) so the list redraws with the new state */
+    static void applyLike(final long id, final boolean on) {
+        MAIN.post(() -> {
+            try {
+                Object item;
+                Long key;
+                synchronized (LIVE) {
+                    key = POST_KEY.get(id);
+                    if (key == null && LIVE.containsKey(id)) key = id;
+                    item = key == null ? null : LIVE.get(key);
+                }
+                if (item == null) {
+                    mod.log(android.util.Log.INFO, TAG, "like: id " + id + " not in LIVE");
+                    return;
+                }
+                ArrayList<Object> path = pathToLikes(item, 0, new java.util.IdentityHashMap<>());
+                if (path == null) {
+                    mod.log(android.util.Log.WARN, TAG, "like: no action list in item " + id);
+                    return;
+                }
+                Field listField = (Field) path.get(path.size() - 1);
+                Object listOwner = path.get(path.size() - 2);
+                java.util.List<?> old = (java.util.List<?>) listField.get(listOwner);
+                int at = likeIndex(old);
+                Object entry = old.get(at);
+                if (liked(entry) == on) {
+                    StringBuilder sb = new StringBuilder();
+                    for (Object e : old) sb.append(e).append(" | ");
+                    mod.log(android.util.Log.INFO, TAG, "like: already " + on + " for " + id + " at " + at + ": " + sb);
+                    return;
+                }
+                Object ne = shallowCopy(entry);
+                for (Field f : entry.getClass().getDeclaredFields()) {
+                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                    f.setAccessible(true);
+                    Object v = f.get(entry);
+                    if (v instanceof Enum) {
+                        Enum<?> cur = (Enum<?>) v;
+                        if (!cur.name().equals("Favorite") && !cur.name().equals("Unfavorite")) continue;
+                        @SuppressWarnings({"unchecked", "rawtypes"})
+                        Object to = Enum.valueOf((Class) cur.getDeclaringClass(), on ? "Unfavorite" : "Favorite");
+                        f.set(ne, to);
+                    } else if (v instanceof Long) {
+                        f.set(ne, Math.max(0L, (Long) v + (on ? 1 : -1)));
+                    }
+                }
+                ArrayList<Object> out = new ArrayList<>(old);
+                out.set(at, ne);
+                Object child = immutableList(Symbols.load(cl, "kotlinx.collections.immutable.b"), out);
+                // rebuild the owners bottom-up so every level compares unequal to the old one
+                for (int i = path.size() - 2; i >= 0; i -= 2) {
+                    Object owner = shallowCopy(path.get(i));
+                    ((Field) path.get(i + 1)).set(owner, child);
+                    child = owner;
+                }
+                synchronized (LIVE) { LIVE.put(key, child); }
+                mod.log(android.util.Log.INFO, TAG, "like applied " + on + " " + id + " depth " + (path.size() / 2));
+                publishNow();
+            } catch (Throwable t) {
+                mod.log(android.util.Log.WARN, TAG, "like feedback failed: " + t);
             }
         });
     }
