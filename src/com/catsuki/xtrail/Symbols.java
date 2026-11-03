@@ -55,7 +55,7 @@ final class Symbols {
         add("com.x.models.n6");
         add("com.x.models.cf");
         add("com.x.models.f7");
-        add("com.x.models.od", "com.x.models.pd");
+        add("com.x.models.od", "com.x.models.rd", "com.x.models.pd");
         add("com.x.models.timelines.v", "com.x.models.timelines.u");
 
         // ---- 时间线状态 ----
