@@ -31,24 +31,24 @@ public class XTrailModule extends XposedModule {
     /** timeline component implementation -> category (class names are specific to X 12.37.2). */
     private static final String[][] TIMELINES = {
             {"com.x.home.foryou.w", "home"},
-            {"com.x.home.following.l", "home"},
+            {"com.x.home.following.m", "home"},
             {"com.x.home.subscribed.f", "home"},
             {"com.x.home.topic.d", "home"},
             {"com.x.search.result.a0", "search"},
             {"com.x.profile.timeline.h", "profile"},
-            {"com.x.profile.k2", "profile"},
-            {"com.x.notifications.tab.q0", "notif"},
+            {"com.x.profile.j2", "profile"},
+            {"com.x.notifications.tab.n0", "notif"},
             {"com.x.notifications.detail.c", "notif"},
-            {"com.x.list.w", "list"},
+            {"com.x.list.u", "list"},
             {"com.x.list.detail.s", "list"},
-            {"com.x.list.detail.l", "list"},
+            {"com.x.list.detail.k", "list"},
             {"com.x.list.detail.c", "list"},
-            {"com.x.communities.impl.postsearch.r", "comm"},
+            {"com.x.communities.impl.postsearch.s", "comm"},
             {"com.x.communities.impl.detail.e0", "comm"},
-            {"com.x.communities.impl.detail.c0", "comm"},
-            {"com.x.urt.generictimeline.c", "other"},
-            {"com.x.video.tab.z1", "other"},
-            {"com.x.postdetail.n", "detail"},
+            {"com.x.communities.impl.detail.g0", "comm"},
+            {"com.x.urt.generictimeline.b", "other"},
+            {"com.x.video.tab.w1", "other"},
+            {"com.x.postdetail.m", "detail"},
     };
 
     private static final Pattern URL = Pattern.compile("(?:x|twitter)\\.com/([^/?#]+)/status/(\\d+)");
@@ -64,6 +64,7 @@ public class XTrailModule extends XposedModule {
         if (!TARGET.equals(param.getPackageName())) return;
         ClassLoader cl = param.getClassLoader();
         log(android.util.Log.INFO, TAG, "loaded into " + param.getPackageName());
+        Symbols.setLogger(msg -> log(android.util.Log.WARN, TAG, "symbol: " + msg));
         step("activity", this::hookActivity);
         step("switch", () -> hookSwitch(cl));
         step("pin-bottom-bar", () -> hookPin(cl));
@@ -154,7 +155,7 @@ public class XTrailModule extends XposedModule {
     // ---------------------------------------------------------------- 1) native History row
 
     private void hookSwitch(ClassLoader cl) throws Throwable {
-        Class<?> impl = cl.loadClass("com.x.featureswitches.FeatureSwitchesRepositoryImpl");
+        Class<?> impl = Symbols.load(cl, "com.x.featureswitches.FeatureSwitchesRepositoryImpl");
         Method m = impl.getDeclaredMethod("getBoolean", String.class, boolean.class);
         hook(m).intercept(chain -> {
             Object r = chain.proceed();
@@ -170,7 +171,7 @@ public class XTrailModule extends XposedModule {
      * p6 true collapses it to zero height (confirmed on device), so force p5=true and p6=false.
      */
     private void hookPin(ClassLoader cl) throws Throwable {
-        Class<?> scaffold = cl.loadClass("com.x.ui.common.n2");
+        Class<?> scaffold = Symbols.load(cl, "com.x.ui.common.k2");
         Method target = null;
         for (Method m : scaffold.getDeclaredMethods()) {
             Class<?>[] p = m.getParameterTypes();
@@ -193,7 +194,7 @@ public class XTrailModule extends XposedModule {
     // ---------------------------------------------------------------- 3) recording
 
     private void initPostIface(ClassLoader cl) throws ClassNotFoundException {
-        if (postIface == null) postIface = cl.loadClass("com.x.models.s5");
+        if (postIface == null) postIface = Symbols.load(cl, "com.x.models.t5");
     }
 
     /** First field of holder whose value is a post (implements s5). */
@@ -270,13 +271,13 @@ public class XTrailModule extends XposedModule {
 
     private void hookTimelines(ClassLoader cl) throws Throwable {
         initPostIface(cl);
-        Class<?> item = cl.loadClass("com.x.models.timelines.items.o0");
+        Class<?> item = Symbols.load(cl, "com.x.models.timelines.items.o0");
         int ok = 0;
         for (String[] e : TIMELINES) {
             final String cat = e[1];
             try {
                 Class<?> impl = cl.loadClass(e[0]);
-                Method v = impl.getDeclaredMethod("v", int.class, item);
+                Method v = Symbols.timelineMethod(impl, item);
                 hook(v).intercept(chain -> {
                     recordItem(cat, chain.getArg(1));
                     return chain.proceed();
@@ -292,14 +293,22 @@ public class XTrailModule extends XposedModule {
     private void hookDetail(ClassLoader cl) throws Throwable {
         initPostIface(cl);
         // PostDetailArgs.FromId: opened by id (link, notification, share) -> "jump"
-        Class<?> fromId = cl.loadClass("com.x.navigation.fl");
-        Class<?> intentAction = cl.loadClass("com.x.navigation.ll");
-        Constructor<?> c1 = fromId.getDeclaredConstructor(long.class, boolean.class, intentAction, int.class);
+        Class<?> fromId = Symbols.load(cl, "com.x.navigation.fl");
+        Constructor<?> c1 = null;
+        for (Constructor<?> ct : fromId.getDeclaredConstructors()) {
+            Class<?>[] p = ct.getParameterTypes();
+            if (p.length == 4 && p[0] == long.class && p[3] == int.class) { c1 = ct; break; }
+        }
+        if (c1 == null) throw new NoSuchMethodException("FromId ctor");
         // PostDetailArgs.FromPostResult: opened from a timeline item -> "open"
-        Class<?> fromResult = cl.loadClass("com.x.navigation.il");
-        Constructor<?> c2 = fromResult.getDeclaredConstructor(
-                cl.loadClass("com.x.models.u0"), cl.loadClass("com.x.models.n6"),
-                cl.loadClass("com.x.models.cf"), cl.loadClass("com.x.models.f7"), Long.class);
+        Class<?> fromResult = Symbols.load(cl, "com.x.navigation.il");
+        Constructor<?> c2 = null;
+        for (Constructor<?> ct : fromResult.getDeclaredConstructors()) {
+            Class<?>[] p = ct.getParameterTypes();
+            if (p.length == 5 && p[4] == Long.class) { c2 = ct; break; }
+        }
+        if (c2 == null) throw new NoSuchMethodException("FromPostResult ctor");
+
         final Method q1 = fromId.getMethod("q");
         final Method q2 = fromResult.getMethod("q");
         hook(c1).intercept(chain -> {
