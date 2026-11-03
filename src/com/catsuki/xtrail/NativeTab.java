@@ -35,7 +35,19 @@ import io.github.libxposed.api.XposedModule;
  */
 final class NativeTab {
     private static final String TAG = "XTrail";
-    private static final int TITLE_RES = 0x7f131541; // string used as the OfflineVideos tab title (2131957057)
+    private static final int TITLE_RES_1237 = 0x7f131541; // 12.37.2 兜底；资源号每个版本都变，正常按名字取
+    private static volatile int titleRes;
+
+    /** OfflineVideos 标签标题的资源号：按资源名 offline_videos_title 在运行时查（名字不会被混淆） */
+    private static boolean isTitleRes(Resources r, int id) {
+        int t = titleRes;
+        if (t == 0) {
+            try { t = r.getIdentifier("offline_videos_title", "string", "com.twitter.android"); } catch (Throwable ignored) { }
+            if (t == 0) t = TITLE_RES_1237;
+            titleRes = t;
+        }
+        return id == t;
+    }
     private static final String TITLE = "足迹";
 
     private static ClassLoader cl;
@@ -44,6 +56,8 @@ final class NativeTab {
     private static Object x9Instance, w9Instance;
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    /** 我们的「足迹」页在 Pages 里的索引（append 到末尾时是 2，X 改了页数也不会跑偏） */
+    private static volatile int ourIndex = -1;
     /** our Likes-clone components -> their state flow */
     private static final Map<Object, Object> OURS = Collections.synchronizedMap(new WeakHashMap<>());
     /** post id -> timeline item, oldest first (re-put on every sighting) */
@@ -70,23 +84,40 @@ final class NativeTab {
     private static final Map<Long, Long> TIMES = new java.util.HashMap<>();
     private static final Map<Long, String> TEXTS = new java.util.HashMap<>();
 
+    private interface Step { void run() throws Throwable; }
+
+    /** 每一步单独兜住：某一步挂了只少一个功能，不要把整个足迹页带走 */
+    private static void step(String name, Step s) {
+        try {
+            s.run();
+            mod.log(android.util.Log.INFO, TAG, "native step ok: " + name);
+        } catch (Throwable t) {
+            mod.log(android.util.Log.ERROR, TAG, "native step FAILED: " + name, t);
+        }
+    }
+
     static void install(XposedModule m, ClassLoader loader) throws Throwable {
         mod = m;
         cl = loader;
-        cU9 = cl.loadClass("com.x.navigation.u9");
-        cW9 = cl.loadClass("com.x.navigation.w9");
-        cX9 = cl.loadClass("com.x.navigation.x9");
-        cItemL1 = cl.loadClass("com.x.models.timelines.items.l1");
-        x9Instance = cX9.getField("INSTANCE").get(null);
-        w9Instance = cW9.getField("INSTANCE").get(null);
-        hookPages();
-        hookChildFactory();
-        hookComponent();
-        try { hookListState(); } catch (Throwable t) { mod.log(android.util.Log.WARN, TAG, "list state hook failed: " + t); }
-        hookTitle();
-        hookTabChevron();
-        hookTabClick();
-        try { hookLikes(); } catch (Throwable t) { mod.log(android.util.Log.WARN, TAG, "like hook failed: " + t); }
+        try {
+            cU9 = Symbols.load(cl, "com.x.navigation.u9");
+            cW9 = Symbols.load(cl, "com.x.navigation.w9");
+            cX9 = Symbols.load(cl, "com.x.navigation.x9");
+            cItemL1 = Symbols.load(cl, "com.x.models.timelines.items.l1");
+            x9Instance = cX9.getField("INSTANCE").get(null);
+            w9Instance = cW9.getField("INSTANCE").get(null);
+        } catch (Throwable t) {
+            mod.log(android.util.Log.ERROR, TAG, "足迹页锚点解析失败，本次不装原生页", t);
+            return;
+        }
+        step("pages", NativeTab::hookPages);
+        step("child-factory", NativeTab::hookChildFactory);
+        step("component", NativeTab::hookComponent);
+        step("list-state", NativeTab::hookListState);
+        step("title", NativeTab::hookTitle);
+        step("tab-chevron", NativeTab::hookTabChevron);
+        step("tab-click", NativeTab::hookTabClick);
+        step("likes", NativeTab::hookLikes);
     }
 
     // ---------------------------------------------------------------- module list support
@@ -208,11 +239,11 @@ final class NativeTab {
             if (app == null) return;
             storeTried = true;
             store = new File(app.getFilesDir(), FILE);
-            Class<?> jc = cl.loadClass("kotlinx.serialization.json.c");
-            Class<?> ks = cl.loadClass("kotlinx.serialization.KSerializer");
+            Class<?> jc = Symbols.load(cl, "kotlinx.serialization.json.c");
+            Class<?> ks = Symbols.load(cl, "kotlinx.serialization.KSerializer");
             json = jc.getDeclaredField("d").get(null);
             jsonEncode = jc.getMethod("d", Object.class, ks);
-            jsonDecode = jc.getMethod("b", String.class, cl.loadClass("kotlinx.serialization.a"));
+            jsonDecode = jc.getMethod("b", String.class, Symbols.load(cl, "kotlinx.serialization.a"));
             Object companion = cItemL1.getField("Companion").get(null);
             itemSerializer = companion.getClass().getMethod("serializer").invoke(companion);
         } catch (Throwable t) {
@@ -568,14 +599,43 @@ final class NativeTab {
 
     // ---------------------------------------------------------------- hooks
 
+    /**
+     * 标签图标：icons.a 里的字段名每个版本都变（12.37.2 的 S4 在 12.38.1 是别的图标），
+     * 但图标本身是 Icon(drawableRes)，drawable 的资源名不混淆，所以按名字建。失败再退回旧字段名。
+     */
+    private static Object namedIcon(Class<?> iconsA, Class<?> tabIcon, String drawable, String legacyField) throws Throwable {
+        Object ic = null;
+        try {
+            Class<?> bType = null;
+            for (Field f : iconsA.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) { bType = f.getType(); break; }
+            }
+            android.app.Application app = (android.app.Application) Class.forName("android.app.ActivityThread")
+                    .getMethod("currentApplication").invoke(null);
+            int id = app == null ? 0 : app.getResources().getIdentifier(drawable, "drawable", "com.twitter.android");
+            if (bType != null && id != 0) {
+                for (Constructor<?> c : bType.getDeclaredConstructors()) {
+                    Class<?>[] p = c.getParameterTypes();
+                    if (p.length == 1 && p[0] == int.class) { c.setAccessible(true); ic = c.newInstance(id); break; }
+                    if (p.length == 2 && p[0] == int.class && p[1] == boolean.class) { c.setAccessible(true); ic = c.newInstance(id, false); break; }
+                }
+            }
+        } catch (Throwable t) {
+            mod.log(android.util.Log.WARN, TAG, "icon " + drawable + " by name failed: " + t);
+        }
+        if (ic == null) ic = iconsA.getField(legacyField).get(null);
+        return tabIcon.getConstructors()[0].newInstance(ic);
+    }
+
     /** Our tab gets the same trailing chevron the Bookmarks tab has (RichTabDescriptor slot d). */
     private static void hookTabChevron() throws Throwable {
-        Class<?> desc = cl.loadClass("com.x.ui.common.tabs.s");
-        final Class<?> slot = cl.loadClass("com.x.ui.common.tabs.f0");
-        final Class<?> label = cl.loadClass("com.x.ui.common.tabs.v");
-        Class<?> icon = cl.loadClass("com.x.ui.common.tabs.u");
-        final Object chevron = icon.getConstructors()[0].newInstance(cl.loadClass("com.x.icons.a").getField("z1").get(null));
-        final Object historyIcon = icon.getConstructors()[0].newInstance(cl.loadClass("com.x.icons.a").getField("S4").get(null));
+        Class<?> desc = Symbols.load(cl, "com.x.ui.common.tabs.s");
+        final Class<?> slot = Symbols.load(cl, "com.x.ui.common.tabs.f0");
+        final Class<?> label = Symbols.load(cl, "com.x.ui.common.tabs.v");
+        Class<?> icon = Symbols.load(cl, "com.x.ui.common.tabs.u");
+        final Class<?> iconsA = Symbols.load(cl, "com.x.icons.a");
+        final Object[] icons = new Object[2];   // {chevron, history clock}，第一次用到时按 drawable 名建
+        final Object iconsLock = new Object();
         final Field slotPersist = slot.getField("b");
         final Constructor<?> slotCtor = slot.getConstructors()[0];
         final Field slotElement = slot.getField("a");
@@ -592,10 +652,16 @@ final class NativeTab {
                 if (lab != null && a[3] == null) {
                     Object el = slotElement.get(lab);
                     if (label.isInstance(el) && TITLE.equals(labelText.get(el))) {
-                        a[3] = slotCtor.newInstance(chevron, Boolean.FALSE);
+                        synchronized (iconsLock) {
+                            if (icons[0] == null) {
+                                icons[0] = namedIcon(iconsA, icon, "ic_vector_chevron_down", "z1");
+                                icons[1] = namedIcon(iconsA, icon, "ic_vector_history", "S4");
+                            }
+                        }
+                        a[3] = slotCtor.newInstance(icons[0], Boolean.FALSE);
                         if (a[1] != null) { // swap the offline-download icon for the history clock
                             boolean keep = slotPersist.getBoolean(a[1]);
-                            a[1] = slotCtor.newInstance(historyIcon, keep);
+                            a[1] = slotCtor.newInstance(icons[1], keep);
                         }
                     }
                 }
@@ -606,29 +672,39 @@ final class NativeTab {
     }
 
     /** Tapping the already-selected tab sends x1(index); on our tab that opens the category menu. */
-    private static void hookTabClick() throws Throwable {
-        Class<?> q = cl.loadClass("com.x.bookmarks.history.q");
-        final Class<?> reclick = cl.loadClass("com.x.bookmarks.history.x1");
-        final Field index = reclick.getField("a");
-        Method b = null;
-        for (Method m : q.getDeclaredMethods()) {
-            Class<?>[] p = m.getParameterTypes();
-            if (m.getName().equals("b") && p.length == 1 && p[0].isAssignableFrom(reclick)) b = m;
-        }
-        if (b == null) throw new NoSuchMethodException("history.q.b(event)");
-        mod.hook(b).intercept(chain -> {
-            Object ev = chain.getArg(0);
-            if (reclick.isInstance(ev) && index.getInt(ev) == 2) {
-                MAIN.post(() -> FilterMenu.show(XTrailModule.topActivity()));
-                return null;
+    private static void hookTabClick() {
+        try {
+            Class<?> q = Symbols.load(cl, "com.x.bookmarks.history.q");
+            final Class<?> reclick = Symbols.load(cl, "com.x.bookmarks.history.x1"); // 只用于定位字段 a
+            final Field index = reclick.getField("a");
+            Method b = Symbols.eventMethod(q, "b", reclick);
+            if (b == null) {
+                mod.log(android.util.Log.WARN, TAG, "history.q 里找不到事件入口，筛选面板不可用");
+                return;
             }
-            return chain.proceed();
-        });
+            mod.hook(b).intercept(chain -> {
+                Object ev = chain.getArg(0);
+                // 事件类名每个版本都在换，用 toString 认「再次点击了已选中的标签」这一种
+                if (ev != null && String.valueOf(ev).startsWith("TabReClicked")) {
+                    int i = -1;
+                    try { i = index.getInt(ev); } catch (Throwable ignored) { }
+                    mod.log(android.util.Log.INFO, TAG, "tab reclick index=" + i + " ours=" + ourIndex);
+                    if (i == ourIndex || (ourIndex < 0 && i == 2)) {
+                        MAIN.post(() -> FilterMenu.show(XTrailModule.topActivity()));
+                        return null;
+                    }
+                }
+                return chain.proceed();
+            });
+            mod.log(android.util.Log.INFO, TAG, "tab click hook ok");
+        } catch (Throwable t) {
+            mod.log(android.util.Log.ERROR, TAG, "tab click hook failed", t);
+        }
     }
 
     /** Pages(selectedIndex, items): [Bookmarks, Likes] -> [Bookmarks, Likes, OfflineVideos(ours)] */
     private static void hookPages() throws Throwable {
-        Class<?> pages = cl.loadClass("com.arkivanov.decompose.router.pages.f");
+        Class<?> pages = Symbols.load(cl, "com.arkivanov.decompose.router.pages.f");
         Constructor<?> target = null;
         for (Constructor<?> c : pages.getDeclaredConstructors()) {
             Class<?>[] p = c.getParameterTypes();
@@ -638,12 +714,23 @@ final class NativeTab {
         mod.hook(target).intercept(chain -> {
             Object[] a = chain.getArgs().toArray();
             List<?> l = (List<?>) a[1];
-            if (l.size() == 3 && ((Integer) a[0]) == 2 && l.get(2) == x9Instance) hintIfEmpty();
-            if (l.size() == 2 && cU9.isInstance(l.get(0)) && cW9.isInstance(l.get(1))) {
+            boolean mine = false;
+            int at = -1;
+            try {
+                mine = x9Instance != null && l.contains(x9Instance);
+                if (mine) at = l.indexOf(x9Instance);
+            } catch (Throwable ignored) {
+            }
+            if (mine) {
+                ourIndex = at;
+                if (((Integer) a[0]) == at) hintIfEmpty();
+            }
+            if (!mine && l.size() == 2 && cU9.isInstance(l.get(0)) && cW9.isInstance(l.get(1))) {
                 ArrayList<Object> n = new ArrayList<>(l);
                 n.add(x9Instance);
+                ourIndex = n.size() - 1;
                 a[1] = n;
-                mod.log(android.util.Log.INFO, TAG, "history pages extended to " + n.size());
+                mod.log(android.util.Log.INFO, TAG, "history pages extended to " + n.size() + ", ours at " + ourIndex);
             }
             return chain.proceed(a);
         });
@@ -651,7 +738,7 @@ final class NativeTab {
 
     /** history.c.invoke(config, ctx): OfflineVideos child -> a second Likes timeline component. */
     private static void hookChildFactory() throws Throwable {
-        Class<?> fac = cl.loadClass("com.x.bookmarks.history.c");
+        Class<?> fac = Symbols.load(cl, "com.x.bookmarks.history.c");
         Method inv = fac.getDeclaredMethod("invoke", Object.class, Object.class);
         final Field kind = fac.getDeclaredField("a");
         kind.setAccessible(true);
@@ -671,7 +758,7 @@ final class NativeTab {
 
     /** history.u (Likes timeline component): our instance serves our own state flow and ignores refreshes. */
     private static void hookComponent() throws Throwable {
-        Class<?> u = cl.loadClass("com.x.bookmarks.history.u");
+        Class<?> u = Symbols.load(cl, "com.x.bookmarks.history.u");
         Method d = u.getDeclaredMethod("d");
         mod.hook(d).intercept(chain -> {
             Object flow = OURS.get(chain.getThisObject());
@@ -688,11 +775,11 @@ final class NativeTab {
 
     private static void hookTitle() throws Throwable {
         mod.hook(Resources.class.getDeclaredMethod("getString", int.class)).intercept(chain -> {
-            if (((Integer) chain.getArg(0)) == TITLE_RES) return TITLE;
+            if (chain.getThisObject() instanceof Resources && isTitleRes((Resources) chain.getThisObject(), (Integer) chain.getArg(0))) return TITLE;
             return chain.proceed();
         });
         mod.hook(Resources.class.getDeclaredMethod("getText", int.class)).intercept(chain -> {
-            if (((Integer) chain.getArg(0)) == TITLE_RES) return TITLE;
+            if (chain.getThisObject() instanceof Resources && isTitleRes((Resources) chain.getThisObject(), (Integer) chain.getArg(0))) return TITLE;
             return chain.proceed();
         });
     }
@@ -701,7 +788,7 @@ final class NativeTab {
 
     private static Object newFlow() {
         try {
-            Method c = cl.loadClass("kotlinx.coroutines.flow.b0").getMethod("c", Object.class);
+            Method c = Symbols.load(cl, "kotlinx.coroutines.flow.a0").getMethod("c", Object.class);
             return c.invoke(null, buildState());
         } catch (Throwable t) {
             mod.log(android.util.Log.ERROR, TAG, "newFlow failed", t);
@@ -784,23 +871,34 @@ final class NativeTab {
 
     /** a native timeline label (UrtTimelineLabel) used as a section header */
     private static Object separator(String header, String sub, long key) throws Throwable {
-        Class<?> od = cl.loadClass("com.x.models.od");
-        Class<?> eg = cl.loadClass("com.x.models.eg");
-        Object label = od.getConstructor(String.class, String.class, eg).newInstance(header, sub, null);
-        Class<?> v0 = cl.loadClass("com.x.models.timelines.items.v0");
-        Class<?> ci = cl.loadClass("com.x.models.u0");
-        return v0.getConstructor(od, long.class, String.class, ci).newInstance(label, key, "xtrail-sep-" + key, null);
+        return labelItem().newInstance(labelOf(header, sub), key, "xtrail-sep-" + key, null);
     }
 
     /** closing label: the whole history is local, so there is never a next page */
     private static Object endLabel() throws Throwable {
-        Class<?> od = cl.loadClass("com.x.models.od");
-        Class<?> eg = cl.loadClass("com.x.models.eg");
-        Object label = od.getConstructor(String.class, String.class, eg).newInstance("没有更多的历史记录", null, null);
-        Class<?> v0 = cl.loadClass("com.x.models.timelines.items.v0");
-        Class<?> ci = cl.loadClass("com.x.models.u0");
-        return v0.getConstructor(od, long.class, String.class, ci).newInstance(label, Long.MIN_VALUE + 1, "xtrail-end", null);
+        return labelItem().newInstance(labelOf("没有更多的历史记录", null), Long.MIN_VALUE + 1, "xtrail-end", null);
     }
+
+    /** TimelineMessagePrompt(header, body, ...)：第三个参数的类型每个版本都在换，按形状取 */
+    private static Object labelOf(String header, String sub) throws Throwable {
+        for (Constructor<?> ct : Symbols.load(cl, "com.x.models.od").getDeclaredConstructors()) {
+            Class<?>[] p = ct.getParameterTypes();
+            if (p.length == 3 && p[0] == String.class && p[1] == String.class) {
+                return ct.newInstance(header, sub, null);
+            }
+        }
+        throw new NoSuchMethodException("timeline label ctor");
+    }
+
+    /** UrtTimelineLabel 条目：(label, long, String, clientEventInfo) */
+    private static Constructor<?> labelItem() throws Throwable {
+        for (Constructor<?> ct : Symbols.load(cl, "com.x.models.timelines.items.v0").getDeclaredConstructors()) {
+            Class<?>[] p = ct.getParameterTypes();
+            if (p.length == 4 && p[1] == long.class && p[2] == String.class) return ct;
+        }
+        throw new NoSuchMethodException("UrtTimelineLabel ctor");
+    }
+
 
     private static final java.util.regex.Pattern SEP = java.util.regex.Pattern.compile("xtrail-sep-(-?\\d+)");
     private static final java.util.IdentityHashMap<Object, Long> KEYDAY = new java.util.IdentityHashMap<>();
@@ -905,7 +1003,7 @@ final class NativeTab {
             synchronized (OURS) {
                 for (Object comp : OURS.keySet()) {
                     Object lc = comp.getClass().getMethod("getLifecycle").invoke(comp);
-                    Object st = cl.loadClass("com.arkivanov.essenty.lifecycle.e").getMethod("d").invoke(lc);
+                    Object st = Symbols.load(cl, "com.arkivanov.essenty.lifecycle.e").getMethod("d").invoke(lc);
                     if ("RESUMED".equals(String.valueOf(st))) return true;
                 }
             }
@@ -916,9 +1014,9 @@ final class NativeTab {
 
     /** LazyListState.g(layoutInfo, ..) runs after every scroll/measure: pin the header of the first visible group */
     private static void hookListState() throws Throwable {
-        Class<?> state = cl.loadClass("androidx.compose.foundation.lazy.i0");
-        Class<?> info = cl.loadClass("androidx.compose.foundation.lazy.u");
-        Class<?> vi = cl.loadClass("androidx.compose.foundation.lazy.v");
+        Class<?> state = Symbols.load(cl, "androidx.compose.foundation.lazy.i0");
+        Class<?> info = Symbols.load(cl, "androidx.compose.foundation.lazy.u");
+        Class<?> vi = Symbols.load(cl, "androidx.compose.foundation.lazy.v");
         final Field fFirst = info.getField("a"), fOff = info.getField("b"), fItems = info.getField("l"), fTotal = info.getField("o"), fVp = info.getField("n");
         final Field fIdx = vi.getField("a"), fKey = vi.getField("l"), fP = vi.getField("p"), fQ = vi.getField("q");
         Method g = null;
@@ -996,11 +1094,11 @@ final class NativeTab {
     }
 
     private static Object buildState() throws Throwable {
-        Class<?> b2 = cl.loadClass("com.x.urt.b2");
-        Class<?> vType = cl.loadClass("com.x.models.timelines.v");
-        Class<?> immutable = cl.loadClass("kotlinx.collections.immutable.b");
+        Class<?> b2 = Symbols.load(cl, "com.x.urt.g2");
+        Class<?> vType = Symbols.load(cl, "com.x.models.timelines.u");
+        Class<?> immutable = Symbols.load(cl, "kotlinx.collections.immutable.b");
         Object type = vType.getField("USER_PROFILE_FAVS").get(null);
-        Object idle = cl.loadClass("com.x.urt.x1").getField("a").get(null);
+        Object idle = Symbols.load(cl, "com.x.urt.x1").getField("a").get(null);
         ArrayList<Object> items;
         try { items = withHeaders(); } catch (Throwable t) { mod.log(android.util.Log.WARN, TAG, "headers failed: " + t); items = filtered(); }
         Constructor<?> ctor = null;
