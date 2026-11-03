@@ -26,6 +26,7 @@ final class Tweaks {
             {"premium", "隐藏高级版推广", "Premium 提示条目，并关闭启动时的付费墙。"},
             {"people", "隐藏搜索里的热门用户", "搜索结果页顶部的用户模块。"},
             {"news", "隐藏今日新闻", "时间线中的 Today's news 条目。"},
+            {"fab", "隐藏发帖按钮的展开菜单", "关闭悬浮发帖按钮上的 GIF、草稿等快捷入口。"},
     };
 
     /** feature switches forced to false while the tweak is on (names are plain strings and survive obfuscation) */
@@ -34,6 +35,7 @@ final class Tweaks {
             {"ads", "ssp_ads_dsp_client_context_enabled"}, {"ads", "ssp_ads_google_dsp_client_context_enabled"},
             {"ads", "android_x_lite_ssp_ads_enabled"},
             {"premium", "premium_paywall_on_app_load_journey_enabled"},
+            {"fab", "android_compose_fab_expansion_enabled"},
     };
 
     private static Method entryId;
