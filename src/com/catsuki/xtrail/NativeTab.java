@@ -174,7 +174,7 @@ final class NativeTab {
 
     /** X's repository that queues likes: remember the instance so the module's list can like through it */
     private static void hookLikes() throws Throwable {
-        Class<?> k = cl.loadClass("com.x.repositories.post.actions.i0");
+        Class<?> k = Symbols.load(cl, "com.x.repositories.post.actions.i0");
         for (Constructor<?> c : k.getDeclaredConstructors()) {
             mod.hook(c).intercept(chain -> {
                 Object r = chain.proceed();
@@ -207,18 +207,17 @@ final class NativeTab {
             Object repo = actions != null ? actions : (ALL_ACTIONS.isEmpty() ? null : ALL_ACTIONS.get(0));
             Object item;
             synchronized (LIVE) { item = LIVE.get(id); }
-            Object post = findByClass(item, "com.x.models.o1", 0);
-            if (repo == null || post == null) return false;
-            Class<?> u5 = cl.loadClass("com.x.models.u5");
-            Object type = u5.getField(on ? "Favorite" : "Unfavorite").get(null);
+            if (repo == null) return false;
             for (Method m : repo.getClass().getDeclaredMethods()) {
                 Class<?>[] p = m.getParameterTypes();
-                if (m.getName().equals("c") && p.length == 7 && p[0] == repo.getClass() && p[2] == u5) {
-                    m.setAccessible(true);
-                    Object extras = cl.loadClass("kotlin.collections.builders.MapBuilder").getConstructor().newInstance();
-                    m.invoke(null, repo, post, type, on ? "LIKE" : "UNLIKE", extras, null, 16);
-                    return true;
-                }
+                if (!(m.getName().equals("c") && p.length == 7 && p[0] == repo.getClass() && p[2].isEnum())) continue;
+                Object post = findByClass(item, p[1].getName(), 0);   // 帖子类和动作类型枚举每个版本换名，从签名里取
+                if (post == null) return false;
+                Object type = p[2].getField(on ? "Favorite" : "Unfavorite").get(null);
+                m.setAccessible(true);
+                Object extras = cl.loadClass("kotlin.collections.builders.MapBuilder").getConstructor().newInstance();
+                m.invoke(null, repo, post, type, on ? "LIKE" : "UNLIKE", extras, null, 16);
+                return true;
             }
         } catch (Throwable t) {
             mod.log(android.util.Log.WARN, TAG, "like failed: " + t);
@@ -1074,10 +1073,12 @@ final class NativeTab {
                 Sticky.update(vis.toArray(new long[0][]), pinned, endBottom, fVp.getInt(u));
             } catch (Throwable t) {
                 // never break X
+                if (!stateErrLogged) { stateErrLogged = true; mod.log(android.util.Log.ERROR, TAG, "list-state hook error", t); }
             }
             return r;
         });
     }
+    private static boolean stateErrLogged;
 
     /** number of posts the tab currently shows */
     static int shownCount() {

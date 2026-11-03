@@ -185,8 +185,12 @@ final class Sticky {
      * pin: {dayKey, title, sub, collapsed} for the current group when its own header is scrolled away, else null.
      */
     static void update(final long[][] vis, final Object[] pin, final int endBottom, final int vp) {
-        if (Looper.myLooper() == Looper.getMainLooper()) apply(vis, pin, endBottom, vp);
-        else MAIN.post(() -> apply(vis, pin, endBottom, vp));
+        if (Looper.myLooper() == Looper.getMainLooper()) safeApply(vis, pin, endBottom, vp);
+        else MAIN.post(() -> safeApply(vis, pin, endBottom, vp));
+    }
+
+    private static void safeApply(long[][] vis, Object[] pin, int endBottom, int vp) {
+        try { apply(vis, pin, endBottom, vp); } catch (Throwable t) { android.util.Log.e("XTrail", "sticky apply failed", t); }
     }
 
     private static void apply(long[][] vis, Object[] pin, int endBottom, int vp) {

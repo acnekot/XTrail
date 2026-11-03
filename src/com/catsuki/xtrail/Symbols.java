@@ -61,6 +61,7 @@ final class Symbols {
         // ---- 时间线状态 ----
         add("com.x.urt.b2", "com.x.urt.g2");
         add("com.x.urt.x1", "com.x.urt.c2", "com.x.urt.d2", "com.x.urt.e2");
+        add("com.x.repositories.post.actions.i0", "com.x.repositories.post.actions.h0");
 
         // ---- 时间线条目 ----
         add("com.x.models.timelines.items.o0");
@@ -214,6 +215,14 @@ final class Symbols {
             case "com.x.urt.b2": {                // Success 状态：5 字段 5 参构造
                 Constructor<?>[] cs = c.getDeclaredConstructors();
                 return c.getDeclaredFields().length == 5 && cs.length > 0 && cs[0].getParameterTypes().length == 5;
+            }
+            case "com.x.repositories.post.actions.i0": {   // 点赞队列仓库：有静态 c(自己, 帖子, 动作类型, String, MapBuilder, f6, int)
+                for (Method m : c.getDeclaredMethods()) {
+                    Class<?>[] p = m.getParameterTypes();
+                    if (m.getName().equals("c") && Modifier.isStatic(m.getModifiers()) && p.length == 7 && p[0] == c
+                            && p[4].getName().endsWith("MapBuilder") && p[2].isEnum()) return true;
+                }
+                return false;
             }
             case "com.x.urt.x1": {                // Idle 单例：静态字段 a 是自己类型，且实现 Success 状态构造函数第 3 个参数的接口
                 if (c.getDeclaredFields().length != 1 || !hasStaticSelf(c)) return false;
