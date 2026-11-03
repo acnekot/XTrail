@@ -77,6 +77,22 @@ final class Settings {
         if (prefs != null) prefs.edit().putInt("cap", v).apply();
     }
 
+    /** generic on/off option (tweaks): stored as "t_<key>" */
+    static boolean tweak(String key) { init(); return prefs != null && prefs.getBoolean("t_" + key, false); }
+
+    static void setTweak(String key, boolean on) { init(); put("t_" + key, on); }
+
+    static boolean anyTweak(String[][] keys) {
+        init();
+        if (prefs == null) return false;
+        for (String[] k : keys) if (prefs.getBoolean("t_" + k[0], false)) return true;
+        return false;
+    }
+
+    static String text(String key) { init(); return prefs == null ? "" : prefs.getString(key, ""); }
+
+    static void setText(String key, String v) { init(); if (prefs != null) prefs.edit().putString(key, v).apply(); }
+
     private static void put(String k, boolean v) {
         if (prefs != null) prefs.edit().putBoolean(k, v).apply();
     }

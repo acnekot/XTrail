@@ -91,6 +91,7 @@ public class XTrailModule extends XposedModule {
         step("detail-recorder", () -> hookDetail(cl));
         step("timeline-recorder", () -> hookTimelines(cl));
         step("native-tab", () -> NativeTab.install(this, cl));
+        step("tweaks", () -> Tweaks.install(this, cl));
     }
 
     private interface Step { void run() throws Throwable; }
@@ -179,7 +180,12 @@ public class XTrailModule extends XposedModule {
         Method m = impl.getDeclaredMethod("getBoolean", String.class, boolean.class);
         hook(m).intercept(chain -> {
             Object r = chain.proceed();
-            if ("android_history_enabled".equals(chain.getArg(0))) return Boolean.TRUE;
+            Object k = chain.getArg(0);
+            if ("android_history_enabled".equals(k)) return Boolean.TRUE;
+            if (k instanceof String) {
+                Boolean o = Tweaks.override((String) k);
+                if (o != null) return o;
+            }
             return r;
         });
     }

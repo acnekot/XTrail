@@ -1109,7 +1109,7 @@ final class NativeTab {
     }
 
     @SuppressWarnings("unchecked")
-    private static Object immutableList(final Class<?> iface, final List<Object> backing) {
+    static Object immutableList(final Class<?> iface, final List<Object> backing) {
         return Proxy.newProxyInstance(cl, new Class<?>[]{iface}, new InvocationHandler() {
             @Override public Object invoke(Object proxy, Method m, Object[] args) throws Throwable {
                 if (m.getName().equals("equals") && args != null && args.length == 1) return proxy == args[0];

@@ -74,3 +74,12 @@ bash build.sh
 ## 免责声明
 
 非官方项目，与 X Corp. 无关。仅供学习交流，使用风险自负。
+
+## 屏蔽与精简（移植自 Piko）
+
+设置里的「屏蔽与精简」和「功能开关」移植自 [Piko](https://github.com/crimera/piko)（GPLv3，NOTICE 见 `NOTICE-piko`）的思路：
+Piko 是改 APK 的补丁，只支持 X 12.19；这里重新实现为运行时钩子，适配当前的 `com.x.*` 结构。
+
+- 屏蔽与精简：在时间线状态构建时按 entryId 前缀丢掉推广、推荐关注/订阅/社群、详情推荐、书签提示、置顶条目、高级版推广、热门用户、今日新闻。
+- 功能开关：在 `FeatureSwitchesRepositoryImpl.getBoolean` 里按名称覆盖。去广告会关闭 `ssp_ads_*`，去高级版推广会关闭启动付费墙；也可以自己写 `开关名=true/false`。
+- Piko 原有的另外 7 个开关（浏览量、悬浮菜单等）在 12.36 起已从 X 的开关清单里删除，无法移植。

@@ -283,6 +283,9 @@ final class SettingsDialog {
         link(b, "记录的页面类型", "选择在哪些页面记录足迹", this::categories);
         link(b, "分组方式", groupName(Settings.group()), this::groups);
         link(b, "最多保留条数", Settings.cap() + " 条", this::caps);
+        header(b, "精简（移植自 Piko）");
+        link(b, "屏蔽与精简", "去广告、隐藏推荐模块等，修改后刷新时间线生效", this::tweaks);
+        link(b, "功能开关", "按名称强制开启或关闭 X 的功能开关，需重启 X 生效", this::flags);
         header(b, "数据");
         LinearLayout clear = row("清空足迹", "删除全部足迹记录，此操作不可恢复。", Color.parseColor("#F4212E"));
         clear.setOnClickListener(v -> new AlertDialog.Builder(a)
@@ -315,6 +318,55 @@ final class SettingsDialog {
             toggle(b, cat[1], null, Settings.catOn(key), on -> Settings.setCat(key, on));
         }
         showPage(col, b);
+    }
+
+    private void tweaks() {
+        dir = 1;
+        stack.push(this::main);
+        LinearLayout col = page("屏蔽与精简");
+        LinearLayout b = body();
+        for (String[] f : Tweaks.FILTERS) {
+            final String key = f[0];
+            toggle(b, f[1], f[2], Settings.tweak(key), on -> Settings.setTweak(key, on));
+        }
+        showPage(col, b);
+    }
+
+    private void flags() {
+        dir = 1;
+        stack.push(this::main);
+        LinearLayout col = page("功能开关");
+        LinearLayout b = body();
+        String cur = Settings.text("flags_custom");
+        int n = 0;
+        for (String line : cur.split("\n")) if (line.contains("=")) n++;
+        link(b, "自定义开关", n == 0 ? "未设置" : "已设置 " + n + " 项", this::editFlags);
+        TextView hint = new TextView(a);
+        hint.setText("每行一项，格式：开关名=true 或 开关名=false。开关名可以是 X 的 feature switch，例如 ssp_ads_home_enabled=false。设置后需要重启 X。");
+        hint.setTextSize(13);
+        hint.setTextColor(Color.GRAY);
+        hint.setPadding(dp(20), dp(8), dp(20), dp(8));
+        b.addView(hint);
+        showPage(col, b);
+    }
+
+    private void editFlags() {
+        final android.widget.EditText et = new android.widget.EditText(a);
+        et.setText(Settings.text("flags_custom"));
+        et.setHint("ssp_ads_home_enabled=false");
+        et.setMinLines(4);
+        et.setGravity(Gravity.TOP | Gravity.START);
+        new AlertDialog.Builder(a)
+                .setTitle("自定义功能开关")
+                .setView(et)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("保存", (x, w) -> {
+                    Settings.setText("flags_custom", et.getText().toString().trim());
+                    stack.clear();
+                    dir = -1;
+                    main();
+                })
+                .show();
     }
 
     private void groups() {
