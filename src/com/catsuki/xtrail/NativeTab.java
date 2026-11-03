@@ -391,6 +391,10 @@ final class NativeTab {
             } catch (Throwable ignored) {
             }
         }
+        if (postId != 0L && postId == APPLIED_ID && System.currentTimeMillis() - APPLIED_AT < 6000) {
+            mod.log(android.util.Log.INFO, TAG, "like: kept our item over a re-sighting of " + postId);
+            return;
+        }
         synchronized (LIVE) {
             if (postId != 0L) {
                 // one row per post: reuse the key it was first seen under; detail items carry junk keys (0, MAX)
@@ -1036,6 +1040,9 @@ final class NativeTab {
                 LIVE.isEmpty() ? "暂无足迹" : "没有符合条件的足迹", android.widget.Toast.LENGTH_SHORT).show());
     }
 
+    private static volatile long APPLIED_ID, APPLIED_AT;
+    private static int LIKE_SEQ;
+
     private static Object buildState() throws Throwable {
         Class<?> b2 = Symbols.load(cl, "com.x.urt.g2");
         Class<?> vType = Symbols.load(cl, "com.x.models.timelines.u");
@@ -1068,17 +1075,14 @@ final class NativeTab {
     private static void hookLikes() throws Throwable {
         Class<?> k = Symbols.load(cl, "com.x.durableactions.o");
         for (java.lang.reflect.Constructor<?> c : k.getDeclaredConstructors()) {
-            mod.log(android.util.Log.INFO, TAG, "likes: ctor " + c.getParameterCount());
             if (c.getParameterCount() != 10) continue;
             mod.hook(c).intercept(chain -> {
                 Object r = chain.proceed();
                 try {
-                    mod.log(android.util.Log.INFO, TAG, "action ctor: " + chain.getArg(1) + " " + chain.getArg(2));
                     Object type = chain.getArg(1), target = chain.getArg(2);
                     if (type instanceof String && target instanceof String && ((String) target).matches("[0-9]+")) {
                         String t = (String) type;
                         if (t.equals("LIKE") || t.equals("UNLIKE")) {
-                            mod.log(android.util.Log.INFO, TAG, "like call: " + t + " " + target);
                             applyLike(Long.parseLong((String) target), t.equals("LIKE"));
                         }
                     }
@@ -1166,6 +1170,43 @@ final class NativeTab {
         return null;
     }
 
+    /** X caches one row presenter per item (urt.y, obfuscated) and builds it only once from the item it first saw; dropping it makes the row rebuild from the edited item */
+    private static void evictPresenter(Object oldItem, long id) {
+        try {
+            String needle = String.valueOf(id);
+            synchronized (OURS) {
+                for (Object comp : new ArrayList<>(OURS.keySet())) {
+                    Object y = null;
+                    for (Field f : comp.getClass().getDeclaredFields()) {
+                        if (f.getType().getName().equals("com.x.urt.c0") || f.getType().getName().equals("com.x.urt.y")) { f.setAccessible(true); y = f.get(comp); }
+                    }
+                    if (y == null) continue;
+                    Map<?, ?> cache = null;
+                    for (Field f : y.getClass().getDeclaredFields()) {
+                        if (!java.util.LinkedHashMap.class.isAssignableFrom(f.getType())) continue;
+                        f.setAccessible(true);
+                        Map<?, ?> m = (Map<?, ?>) f.get(y);
+                        if (m != null && !m.isEmpty() && f.getType().getName().endsWith(".m2")) cache = m;
+                    }
+                    if (cache == null) continue;
+                    for (java.util.Iterator<? extends Map.Entry<?, ?>> it = cache.entrySet().iterator(); it.hasNext(); ) {
+                        Object k = it.next().getKey();
+                        boolean hit = false;
+                        for (Field f : k.getClass().getDeclaredFields()) {
+                            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+                            f.setAccessible(true);
+                            Object v = f.get(k);
+                            if (v == oldItem || (v != null && !(v instanceof Number) && String.valueOf(v).contains(needle))) hit = true;
+                        }
+                        if (hit) it.remove();
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            mod.log(android.util.Log.WARN, TAG, "evict presenter failed: " + t);
+        }
+    }
+
     /** the stored item of a liked post gets its Favorite entry swapped (count +-1) so the list redraws with the new state */
     static void applyLike(final long id, final boolean on) {
         MAIN.post(() -> {
@@ -1221,9 +1262,25 @@ final class NativeTab {
                     ((Field) path.get(i + 1)).set(owner, child);
                     child = owner;
                 }
+                // the list keys its rows by entry id and keeps a row's presenter until that key goes away: a new id makes the row compose afresh from the edited item
+                int renamed = 0;
+                for (Class<?> k = child.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+                    for (Field f : k.getDeclaredFields()) {
+                        if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || f.getType() != String.class) continue;
+                        f.setAccessible(true);
+                        Object v = f.get(child);
+                        if (v instanceof String && ((String) v).startsWith("tweet-")) {
+                            f.set(child, ((String) v).split("~")[0] + "~" + (++LIKE_SEQ));
+                            renamed++;
+                        }
+                    }
+                }
                 synchronized (LIVE) { LIVE.put(key, child); }
-                mod.log(android.util.Log.INFO, TAG, "like applied " + on + " " + id + " depth " + (path.size() / 2));
-                publishNow();
+                mod.log(android.util.Log.INFO, TAG, "like applied " + on + " " + id + " depth " + (path.size() / 2) + " renamed " + renamed);
+                APPLIED_ID = id;
+                APPLIED_AT = System.currentTimeMillis();
+                evictPresenter(item, id);
+                publishBody();
             } catch (Throwable t) {
                 mod.log(android.util.Log.WARN, TAG, "like feedback failed: " + t);
             }
