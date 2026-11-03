@@ -43,53 +43,53 @@ final class Symbols {
 
     static {
         // ---- 应用骨架 / 底栏 ----
-        add("com.x.ui.common.n2", "com.x.ui.common.k2");
+        add("com.x.ui.common.n2", "com.x.ui.common.k2", "com.x.ui.common.p2");
 
         // ---- 特性开关（X 未混淆，名字稳定，登记只为统一入口） ----
         add("com.x.featureswitches.FeatureSwitchesRepositoryImpl");
 
         // ---- 模型 ----
-        add("com.x.models.s5", "com.x.models.t5");
+        add("com.x.models.s5", "com.x.models.t5", "com.x.models.u5");
         add("com.x.models.u0", "com.x.models.v0");
         add("com.x.models.eg", "com.x.models.fg");
         add("com.x.models.n6");
         add("com.x.models.cf");
         add("com.x.models.f7");
-        add("com.x.models.od");
+        add("com.x.models.od", "com.x.models.pd");
         add("com.x.models.timelines.v", "com.x.models.timelines.u");
 
         // ---- 时间线状态 ----
-        add("com.x.urt.b2", "com.x.urt.g2");
+        add("com.x.urt.b2", "com.x.urt.g2", "com.x.urt.e2");
         add("com.x.urt.x1", "com.x.urt.c2", "com.x.urt.d2", "com.x.urt.e2");
         add("com.x.repositories.post.actions.i0", "com.x.repositories.post.actions.h0");
 
         // ---- 时间线条目 ----
-        add("com.x.models.timelines.items.o0");
+        add("com.x.models.timelines.items.o0", "com.x.models.timelines.items.p0");
         add("com.x.models.timelines.items.l1", "com.x.models.timelines.items.k1");
         add("com.x.models.timelines.items.v0", "com.x.models.timelines.items.u0");
 
         // ---- 历史页导航（Pages 的三种配置） ----
-        add("com.x.navigation.u9", "com.x.navigation.v9");
-        add("com.x.navigation.w9", "com.x.navigation.x9");
-        add("com.x.navigation.x9", "com.x.navigation.y9");
+        add("com.x.navigation.u9", "com.x.navigation.v9", "com.x.navigation.g9");
+        add("com.x.navigation.w9", "com.x.navigation.x9", "com.x.navigation.i9");
+        add("com.x.navigation.x9", "com.x.navigation.y9", "com.x.navigation.j9");
 
         // ---- 详情页参数 ----
-        add("com.x.navigation.fl", "com.x.navigation.nl");
-        add("com.x.navigation.il", "com.x.navigation.ql");
+        add("com.x.navigation.fl", "com.x.navigation.nl", "com.x.navigation.qk");
+        add("com.x.navigation.il", "com.x.navigation.ql", "com.x.navigation.tk");
         add("com.x.navigation.ll", "com.x.navigation.tl");
 
         // ---- 标签描述符 / 插槽 / 图标 ----
-        add("com.x.ui.common.tabs.s", "com.x.ui.common.tabs.r");
-        add("com.x.ui.common.tabs.f0", "com.x.ui.common.tabs.e0");
-        add("com.x.ui.common.tabs.v", "com.x.ui.common.tabs.u");
-        add("com.x.ui.common.tabs.u", "com.x.ui.common.tabs.t");
+        add("com.x.ui.common.tabs.s", "com.x.ui.common.tabs.r", "com.x.ui.common.tabs.t");
+        add("com.x.ui.common.tabs.f0", "com.x.ui.common.tabs.e0", "com.x.ui.common.tabs.g0");
+        add("com.x.ui.common.tabs.v", "com.x.ui.common.tabs.u", "com.x.ui.common.tabs.w");
+        add("com.x.ui.common.tabs.u", "com.x.ui.common.tabs.t", "com.x.ui.common.tabs.v");
         add("com.x.icons.a");
 
         // ---- 历史页组件 ----
         add("com.x.bookmarks.history.c");
-        add("com.x.bookmarks.history.q");
-        add("com.x.bookmarks.history.u");
-        add("com.x.bookmarks.history.x1", "com.x.bookmarks.history.s1");
+        add("com.x.bookmarks.history.q", "com.x.bookmarks.history.r");
+        add("com.x.bookmarks.history.u", "com.x.bookmarks.history.v");
+        add("com.x.bookmarks.history.x1", "com.x.bookmarks.history.s1", "com.x.bookmarks.history.z1", "com.x.bookmarks.history.y1");
 
         // ---- 第三方库（同样被 X 的 R8 重排） ----
         add("kotlinx.coroutines.flow.b0", "kotlinx.coroutines.flow.a0");
@@ -262,14 +262,26 @@ final class Symbols {
             case "com.x.navigation.x9":           // OfflineVideos 页配置：单例
                 return "OfflineVideos".equals(describe(c));
 
-            case "com.x.navigation.fl": {         // FromId：q() 返回 long
+            case "com.x.navigation.fl": {         // FromId：q() 返回 long，且有 (long, ?, ?, int) 构造
                 if (!hasMethod(c, "q", 0)) return false;
+                boolean ctor = false;
+                for (Constructor<?> ct : c.getDeclaredConstructors()) {
+                    Class<?>[] p = ct.getParameterTypes();
+                    if (p.length == 4 && p[0] == long.class && p[3] == int.class) ctor = true;
+                }
+                if (!ctor) return false;
                 for (Method m : c.getDeclaredMethods())
                     if (m.getName().equals("q") && m.getReturnType() == long.class) return true;
                 return false;
             }
-            case "com.x.navigation.il": {         // FromPostResult：q() 返回 long
+            case "com.x.navigation.il": {         // FromPostResult：q() 返回 long，且有 5 参、末位 Long 的构造
                 if (!hasMethod(c, "q", 0)) return false;
+                boolean ctor = false;
+                for (Constructor<?> ct : c.getDeclaredConstructors()) {
+                    Class<?>[] p = ct.getParameterTypes();
+                    if (p.length == 5 && p[4] == Long.class) ctor = true;
+                }
+                if (!ctor) return false;
                 for (Method m : c.getDeclaredMethods())
                     if (m.getName().equals("q") && m.getReturnType() == long.class) return true;
                 return false;
@@ -293,6 +305,18 @@ final class Symbols {
 
             case "com.x.bookmarks.history.x1":    // TabReClicked：int 字段
                 return c.getDeclaredFields().length == 1 && hasFieldType(c, int.class);
+            case "com.x.models.timelines.items.o0": // 条目接口：c()/m()/s() 三个无参方法
+                return c.isInterface() && hasMethod(c, "c", 0) && hasMethod(c, "m", 0) && hasMethod(c, "s", 0);
+            case "com.x.models.od":                // TimelineMessagePrompt：(String, String, ?) 构造
+                for (Constructor<?> ct : c.getDeclaredConstructors()) {
+                    Class<?>[] p = ct.getParameterTypes();
+                    if (p.length == 3 && p[0] == String.class && p[1] == String.class) return true;
+                }
+                return false;
+            case "com.x.bookmarks.history.q":      // 历史页容器：体量大（几十个成员），同名的占位类只有几个
+                return c.getDeclaredMethods().length + c.getDeclaredFields().length >= 15;
+            case "com.x.bookmarks.history.u":      // Likes 时间线组件：d() 无参 + 体量大
+                return hasMethod(c, "d", 0) && c.getDeclaredMethods().length + c.getDeclaredFields().length >= 15;
             case "com.x.bookmarks.history.c":     // 子工厂：Function2
                 return hasMethod(c, "invoke", 2);
 

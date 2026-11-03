@@ -28,7 +28,7 @@ public class XTrailModule extends XposedModule {
     private static final String TAG = "XTrail";
     private static final String TARGET = "com.twitter.android";
 
-    /** timeline component implementation -> category (class names are specific to X 12.37.2). */
+    /** timeline component implementation -> category (names of every supported X version; absent/mismatched ones are skipped). */
     private static final String[][] TIMELINES = {
             {"com.x.home.foryou.w", "home"},
             {"com.x.home.following.m", "home"},
@@ -49,6 +49,26 @@ public class XTrailModule extends XposedModule {
             {"com.x.urt.generictimeline.b", "other"},
             {"com.x.video.tab.w1", "other"},
             {"com.x.postdetail.m", "detail"},
+            // X 12.37.2 的名字
+            {"com.x.home.following.l", "home"},
+            {"com.x.profile.k2", "profile"},
+            {"com.x.notifications.tab.q0", "notif"},
+            {"com.x.list.w", "list"},
+            {"com.x.list.detail.l", "list"},
+            {"com.x.communities.impl.postsearch.r", "comm"},
+            {"com.x.communities.impl.detail.c0", "comm"},
+            {"com.x.urt.generictimeline.c", "other"},
+            // X 12.36 的名字：条目接口是 items.p0，组件类整体偏移；(int, item) 形状对不上的会被跳过
+            {"com.x.profile.timeline.i", "profile"},
+            {"com.x.profile.h2", "profile"},
+            {"com.x.notifications.tab.t0", "notif"},
+            {"com.x.list.v", "list"},
+            {"com.x.list.detail.j", "list"},
+            {"com.x.list.detail.q", "list"},
+            {"com.x.communities.impl.detail.f0", "comm"},
+            {"com.x.communities.impl.detail.i0", "comm"},
+            {"com.x.video.tab.z1", "other"},
+            {"com.x.postdetail.n", "detail"},
     };
 
     private static final Pattern URL = Pattern.compile("(?:x|twitter)\\.com/([^/?#]+)/status/(\\d+)");
@@ -273,10 +293,12 @@ public class XTrailModule extends XposedModule {
         initPostIface(cl);
         Class<?> item = Symbols.load(cl, "com.x.models.timelines.items.o0");
         int ok = 0;
+        java.util.Set<Class<?>> done = new java.util.HashSet<>();
         for (String[] e : TIMELINES) {
             final String cat = e[1];
             try {
                 Class<?> impl = cl.loadClass(e[0]);
+                if (!done.add(impl)) continue;
                 Method v = Symbols.timelineMethod(impl, item);
                 hook(v).intercept(chain -> {
                     recordItem(cat, chain.getArg(1));
