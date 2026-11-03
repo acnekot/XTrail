@@ -11,10 +11,18 @@ import java.lang.reflect.Method;
  */
 final class Fonts {
     static void install(final XTrailModule mod) throws Throwable {
-        Method m = Typeface.class.getDeclaredMethod("createFromResources", AssetManager.class, String.class, int.class);
+        Method m = null;
+        for (Method c : Typeface.class.getDeclaredMethods()) {
+            if (!c.getName().equals("createFromResources")) continue;
+            boolean str = false;
+            for (Class<?> t : c.getParameterTypes()) if (t == String.class) str = true;
+            if (str && c.getReturnType() == Typeface.class) m = c;
+        }
+        if (m == null) throw new NoSuchMethodException("Typeface.createFromResources");
+        final int pi = java.util.Arrays.asList(m.getParameterTypes()).indexOf(String.class);
         mod.hook(m).intercept(chain -> {
             try {
-                Object p = chain.getArg(1);
+                Object p = chain.getArg(pi);
                 if (p instanceof String && ((String) p).contains("/chirp_") && Settings.tweak("font")) {
                     java.util.regex.Matcher w = java.util.regex.Pattern.compile("_(\\d{3})\\.").matcher((String) p);
                     int weight = w.find() ? Integer.parseInt(w.group(1)) : 400;

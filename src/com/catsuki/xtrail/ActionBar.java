@@ -18,20 +18,20 @@ final class ActionBar {
     private static Constructor<?> entryCtor;
     private static Class<?> typeEnum;
 
-    private static Class<?> findState(ClassLoader cl, Class<?> immutable) {
-        Class<?> found = null;
+    private static Constructor<?> findState(ClassLoader cl, Class<?> immutable) {
+        Constructor<?> found = null;
         for (int i = 0; i < 26 * 101 + 26; i++) {
             String n = i < 26 ? String.valueOf((char) ('a' + i)) : ((char) ('a' + (i - 26) / 101)) + String.valueOf((i - 26) % 101);
             Class<?> c;
             try { c = Class.forName(PKG + n, false, cl); } catch (Throwable t) { continue; }
             for (Constructor<?> k : c.getDeclaredConstructors()) {
                 Class<?>[] p = k.getParameterTypes();
-                if (p.length == 5 && p[0] == immutable && p[1] == String.class && p[3] == boolean.class
-                        && p[4].getName().equals("kotlin.jvm.functions.Function1")
+                if ((p.length == 5 || p.length == 6) && p[0] == immutable && p[1] == String.class && p[3] == boolean.class
+                        && p[p.length - 1].getName().equals("kotlin.jvm.functions.Function1")
                         && java.lang.reflect.Modifier.isAbstract(p[2].getModifiers())
                         && p[2].getName().startsWith(PKG)) {
-                    if (found != null && found != c) return null;     // ambiguous
-                    found = c;
+                    if (found != null && found.getDeclaringClass() != c) return null;     // ambiguous
+                    found = k;
                 }
             }
         }
@@ -93,10 +93,8 @@ final class ActionBar {
 
     static void install(final XTrailModule mod, final ClassLoader cl) throws Throwable {
         final Class<?> immutable = Symbols.load(cl, "kotlinx.collections.immutable.b");
-        final Class<?> state = findState(cl, immutable);
-        if (state == null) throw new ClassNotFoundException("inline action bar state");
-        Constructor<?> ctor = null;
-        for (Constructor<?> k : state.getDeclaredConstructors()) if (k.getParameterTypes().length == 5) ctor = k;
+        final Constructor<?> ctor = findState(cl, immutable);
+        if (ctor == null) throw new ClassNotFoundException("inline action bar state ");
         mod.hook(ctor).intercept(chain -> {
             Object[] a = null;
             try {
