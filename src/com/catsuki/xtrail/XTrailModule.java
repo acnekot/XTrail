@@ -92,6 +92,8 @@ public class XTrailModule extends XposedModule {
         step("timeline-recorder", () -> hookTimelines(cl));
         step("native-tab", () -> NativeTab.install(this, cl));
         step("tweaks", () -> Tweaks.install(this, cl));
+        step("actionbar", () -> ActionBar.install(this, cl));
+        step("fonts", () -> Fonts.install(this));
     }
 
     private interface Step { void run() throws Throwable; }
