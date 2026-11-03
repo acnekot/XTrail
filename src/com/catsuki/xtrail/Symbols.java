@@ -97,9 +97,9 @@ final class Symbols {
         add("kotlinx.serialization.KSerializer");
         add("kotlinx.serialization.a");
         add("kotlinx.collections.immutable.b");
-        add("androidx.compose.foundation.lazy.i0");
-        add("androidx.compose.foundation.lazy.u");
-        add("androidx.compose.foundation.lazy.v");
+        add("androidx.compose.foundation.lazy.i0", "androidx.compose.foundation.lazy.g0", "androidx.compose.foundation.lazy.i0");
+        add("androidx.compose.foundation.lazy.u", "androidx.compose.foundation.lazy.s", "androidx.compose.foundation.lazy.u");
+        add("androidx.compose.foundation.lazy.v", "androidx.compose.foundation.lazy.t", "androidx.compose.foundation.lazy.v");
         add("com.arkivanov.decompose.router.pages.f", "com.arkivanov.decompose.router.pages.h");
         add("com.arkivanov.essenty.lifecycle.e");
 
@@ -317,6 +317,17 @@ final class Symbols {
                 return c.getDeclaredMethods().length + c.getDeclaredFields().length >= 15;
             case "com.x.bookmarks.history.u":      // Likes 时间线组件：d() 无参 + 体量大
                 return hasMethod(c, "d", 0) && c.getDeclaredMethods().length + c.getDeclaredFields().length >= 15;
+            case "androidx.compose.foundation.lazy.i0": { // LazyListState：g(布局信息, boolean, boolean)
+                for (Method m : c.getDeclaredMethods()) {
+                    Class<?>[] p = m.getParameterTypes();
+                    if (m.getName().equals("g") && p.length == 3 && p[1] == boolean.class && p[2] == boolean.class) return true;
+                }
+                return false;
+            }
+            case "androidx.compose.foundation.lazy.u":   // 布局结果：items 列表 l + 总数 o
+                return hasField(c, "l", java.util.List.class) && hasField(c, "o", int.class) && hasField(c, "n", int.class);
+            case "androidx.compose.foundation.lazy.v":   // 条目信息：下标 a + key l + p/q
+                return hasField(c, "a", int.class) && hasField(c, "l", Object.class) && hasField(c, "p", int.class);
             case "com.arkivanov.decompose.router.pages.f": // Pages：(int, List) 构造
                 for (Constructor<?> ct : c.getDeclaredConstructors()) {
                     Class<?>[] p = ct.getParameterTypes();
